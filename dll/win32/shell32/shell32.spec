@@ -232,7 +232,7 @@
 233 stdcall -noname SHGetUserPicturePathW(wstr long ptr)
 234 stdcall -noname SHSetUserPicturePathW(wstr long ptr)
 235 stdcall -noname SHOpenEffectiveToken(ptr)
-236 stdcall -noname SHTestTokenPrivilegeW(ptr ptr)
+236 stdcall -noname SHTestTokenPrivilegeW(ptr wstr)
 237 stdcall -noname SHShouldShowWizards(ptr)
 238 stdcall InternalExtractIconListW(ptr wstr ptr)
 239 stdcall PathIsSlowW(wstr long)
@@ -242,7 +242,7 @@
 243 stdcall -noname SHSetShellWindowEx(ptr ptr) user32.SetShellWindowEx
 244 stdcall -noname SHSettingsChanged(ptr ptr)
 245 stdcall SHTestTokenMembership(ptr ptr)
-246 stub -noname SHInvokePrivilegedFunctionW
+246 stdcall -noname SHInvokePrivilegedFunctionW(wstr ptr ptr)
 247 stub -noname SHGetActiveConsoleSessionId
 248 stdcall -noname SHGetUserSessionId(ptr)
 249 stdcall -noname PathParseIconLocation(wstr) PathParseIconLocationW

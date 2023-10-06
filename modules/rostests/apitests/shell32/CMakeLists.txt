@@ -7,6 +7,7 @@ list(APPEND SOURCE
     CheckEscapes.cpp
     CIDLData.cpp
     CMyComputer.cpp
+    CommandLineToArgvW.cpp
     CShellDesktop.cpp
     CShellLink.cpp
     CUserNotification.cpp
@@ -14,6 +15,8 @@ list(APPEND SOURCE
     DragDrop.cpp
     ExtractIconEx.cpp
     FindExecutable.cpp
+    GetDisplayNameOf.cpp
+    Int64ToString.cpp
     IShellFolderViewCB.cpp
     OpenAs_RunDLL.cpp
     PathResolve.cpp
@@ -23,6 +26,7 @@ list(APPEND SOURCE
     SHCreateFileDataObject.cpp
     SHCreateFileExtractIconW.cpp
     SHParseDisplayName.cpp
+    She.cpp
     ShellExecCmdLine.cpp
     ShellExecuteEx.cpp
     ShellExecuteW.cpp
@@ -49,7 +53,7 @@ set_target_properties(shell32_apitest
 
 target_link_libraries(shell32_apitest wine uuid ${PSEH_LIB} cpprt atl_classes)
 set_module_type(shell32_apitest win32cui)
-add_importlibs(shell32_apitest user32 gdi32 shell32 ole32 oleaut32 advapi32 shlwapi msvcrt kernel32 ntdll)
+add_importlibs(shell32_apitest user32 gdi32 shell32 shlwapi ole32 oleaut32 advapi32 shlwapi msvcrt kernel32 ntdll)
 add_pch(shell32_apitest shelltest.h "${PCH_SKIP_SOURCE}")
 add_rostests_file(TARGET shell32_apitest)
 

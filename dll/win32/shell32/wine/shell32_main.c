@@ -134,11 +134,11 @@ LPWSTR* WINAPI CommandLineToArgvW(LPCWSTR lpCmdline, int* numargs)
     else
     {
         /* The executable path ends at the next space, no matter what */
-        while (*s && *s!=' ' && *s!='\t')
+        while (*s && !isspace(*s))
             s++;
     }
     /* skip to the first argument, if any */
-    while (*s==' ' || *s=='\t')
+    while (isblank(*s))
         s++;
     if (*s)
         argc++;
@@ -147,10 +147,10 @@ LPWSTR* WINAPI CommandLineToArgvW(LPCWSTR lpCmdline, int* numargs)
     qcount=bcount=0;
     while (*s)
     {
-        if ((*s==' ' || *s=='\t') && qcount==0)
+        if (isblank(*s) && qcount==0)
         {
             /* skip to the next argument and count it if any */
-            while (*s==' ' || *s=='\t')
+            while (isblank(*s))
                 s++;
             if (*s)
                 argc++;
@@ -218,7 +218,7 @@ LPWSTR* WINAPI CommandLineToArgvW(LPCWSTR lpCmdline, int* numargs)
     else
     {
         /* The executable path ends at the next space, no matter what */
-        while (*d && *d!=' ' && *d!='\t')
+        while (*d && !isspace(*d))
             d++;
         s=d;
         if (*s)
@@ -227,8 +227,9 @@ LPWSTR* WINAPI CommandLineToArgvW(LPCWSTR lpCmdline, int* numargs)
     /* close the executable path */
     *d++=0;
     /* skip to the first argument and initialize it if any */
-    while (*s==' ' || *s=='\t')
+    while (isblank(*s))
         s++;
+
     if (!*s)
     {
         /* There are no parameters so we are all done */
@@ -242,7 +243,7 @@ LPWSTR* WINAPI CommandLineToArgvW(LPCWSTR lpCmdline, int* numargs)
     qcount=bcount=0;
     while (*s)
     {
-        if ((*s==' ' || *s=='\t') && qcount==0)
+        if (isblank(*s) && qcount==0)
         {
             /* close the argument */
             *d++=0;
@@ -251,7 +252,7 @@ LPWSTR* WINAPI CommandLineToArgvW(LPCWSTR lpCmdline, int* numargs)
             /* skip to the next one and initialize it if any */
             do {
                 s++;
-            } while (*s==' ' || *s=='\t');
+            } while (isblank(*s));
             if (*s)
                 argv[argc++]=d;
         }
@@ -964,72 +965,6 @@ typedef struct
     LPCWSTR  szOtherStuff;
     HICON hIcon;
 } ABOUT_INFO;
-
-#define DROP_FIELD_TOP    (-15)
-#define DROP_FIELD_HEIGHT  15
-
-/*************************************************************************
- * SHAppBarMessage            [SHELL32.@]
- */
-UINT_PTR WINAPI OLD_SHAppBarMessage(DWORD msg, PAPPBARDATA data)
-{
-    int width=data->rc.right - data->rc.left;
-    int height=data->rc.bottom - data->rc.top;
-    RECT rec=data->rc;
-
-    TRACE("msg=%d, data={cb=%d, hwnd=%p, callback=%x, edge=%d, rc=%s, lparam=%lx}\n",
-          msg, data->cbSize, data->hWnd, data->uCallbackMessage, data->uEdge,
-          wine_dbgstr_rect(&data->rc), data->lParam);
-
-    switch (msg)
-    {
-        case ABM_GETSTATE:
-            return ABS_ALWAYSONTOP | ABS_AUTOHIDE;
-
-        case ABM_GETTASKBARPOS:
-            GetWindowRect(data->hWnd, &rec);
-            data->rc=rec;
-            return TRUE;
-
-        case ABM_ACTIVATE:
-            SetActiveWindow(data->hWnd);
-            return TRUE;
-
-        case ABM_GETAUTOHIDEBAR:
-            return 0; /* pretend there is no autohide bar */
-
-        case ABM_NEW:
-            /* cbSize, hWnd, and uCallbackMessage are used. All other ignored */
-            SetWindowPos(data->hWnd,HWND_TOP,0,0,0,0,SWP_SHOWWINDOW|SWP_NOMOVE|SWP_NOSIZE);
-            return TRUE;
-
-        case ABM_QUERYPOS:
-            GetWindowRect(data->hWnd, &(data->rc));
-            return TRUE;
-
-        case ABM_REMOVE:
-            FIXME("ABM_REMOVE broken\n");
-            /* FIXME: this is wrong; should it be DestroyWindow instead? */
-            /*CloseHandle(data->hWnd);*/
-            return TRUE;
-
-        case ABM_SETAUTOHIDEBAR:
-            SetWindowPos(data->hWnd,HWND_TOP,rec.left+1000,rec.top,
-                             width,height,SWP_SHOWWINDOW);
-            return TRUE;
-
-        case ABM_SETPOS:
-            data->uEdge=(ABE_RIGHT | ABE_LEFT);
-            SetWindowPos(data->hWnd,HWND_TOP,data->rc.left,data->rc.top,
-                         width,height,SWP_SHOWWINDOW);
-            return TRUE;
-
-        case ABM_WINDOWPOSCHANGED:
-            return TRUE;
-    }
-
-    return FALSE;
-}
 
 /*************************************************************************
  * SHHelpShortcuts_RunDLLA        [SHELL32.@]

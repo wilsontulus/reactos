@@ -457,40 +457,6 @@
 #define PROCESSOR_ARCHITECTURE_AMD64 9
 #define PROCESSOR_ARCHITECTURE_UNKNOWN 0xFFFF
 
-/* Processor features */
-#define PF_FLOATING_POINT_PRECISION_ERRATA       0
-#define PF_FLOATING_POINT_EMULATED               1
-#define PF_COMPARE_EXCHANGE_DOUBLE               2
-#define PF_MMX_INSTRUCTIONS_AVAILABLE            3
-#define PF_PPC_MOVEMEM_64BIT_OK                  4
-#define PF_ALPHA_BYTE_INSTRUCTIONS               5
-#define PF_XMMI_INSTRUCTIONS_AVAILABLE           6
-#define PF_3DNOW_INSTRUCTIONS_AVAILABLE          7
-#define PF_RDTSC_INSTRUCTION_AVAILABLE           8
-#define PF_PAE_ENABLED                           9
-#define PF_XMMI64_INSTRUCTIONS_AVAILABLE        10
-#define PF_SSE_DAZ_MODE_AVAILABLE               11
-#define PF_NX_ENABLED                           12
-#define PF_SSE3_INSTRUCTIONS_AVAILABLE          13
-#define PF_COMPARE_EXCHANGE128                  14
-#define PF_COMPARE64_EXCHANGE128                15
-#define PF_CHANNELS_ENABLED                     16
-#define PF_XSAVE_ENABLED                        17
-#define PF_ARM_VFP_32_REGISTERS_AVAILABLE       18
-#define PF_ARM_NEON_INSTRUCTIONS_AVAILABLE      19
-#define PF_SECOND_LEVEL_ADDRESS_TRANSLATION     20
-#define PF_VIRT_FIRMWARE_ENABLED                21
-#define PF_RDWRFSGSBASE_AVAILABLE               22
-#define PF_FASTFAIL_AVAILABLE                   23
-#define PF_ARM_DIVIDE_INSTRUCTION_AVAILABLE     24
-#define PF_ARM_64BIT_LOADSTORE_ATOMIC           25
-#define PF_ARM_EXTERNAL_CACHE_AVAILABLE         26
-#define PF_ARM_FMAC_INSTRUCTIONS_AVAILABLE      27
-#define PF_RDRAND_INSTRUCTION_AVAILABLE         28
-#define PF_ARM_V8_INSTRUCTIONS_AVAILABLE        29
-#define PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE 30
-#define PF_ARM_V8_CRC32_INSTRUCTIONS_AVAILABLE  31
-
 /* also in ddk/ntifs.h */
 #define FILE_ACTION_ADDED                   0x00000001
 #define FILE_ACTION_REMOVED                 0x00000002
@@ -1116,7 +1082,19 @@ typedef VOID (NTAPI *WORKERCALLBACKFUNC)(PVOID);
 #define IO_REPARSE_TAG_MOUNT_POINT 0xA0000003
 #define IO_REPARSE_TAG_SYMLINK 0xA000000CL
 
-#define RTL_CRITICAL_SECTION_FLAG_NO_DEBUG_INFO 0x01000000
+#define RTL_CRITICAL_SECTION_FLAG_NO_DEBUG_INFO    0x01000000
+#define RTL_CRITICAL_SECTION_FLAG_DYNAMIC_SPIN     0x02000000
+#define RTL_CRITICAL_SECTION_FLAG_STATIC_INIT      0x04000000
+#define RTL_CRITICAL_SECTION_FLAG_RESOURCE_TYPE    0x08000000
+#define RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO 0x10000000
+#define RTL_CRITICAL_SECTION_ALL_FLAG_BITS         0xFF000000
+#define RTL_CRITICAL_SECTION_FLAG_RESERVED \
+    (RTL_CRITICAL_SECTION_ALL_FLAG_BITS & \
+    (~(RTL_CRITICAL_SECTION_FLAG_NO_DEBUG_INFO | \
+       RTL_CRITICAL_SECTION_FLAG_DYNAMIC_SPIN | \
+       RTL_CRITICAL_SECTION_FLAG_STATIC_INIT | \
+       RTL_CRITICAL_SECTION_FLAG_RESOURCE_TYPE | \
+       RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO)))
 
 #ifndef RC_INVOKED
 
@@ -2778,6 +2756,8 @@ RtlQueryDepthSList(
 #define RTL_RUN_ONCE_ASYNC 0x00000002UL
 #define RTL_RUN_ONCE_INIT_FAILED 0x00000004UL
 
+#define RTL_RUN_ONCE_CTX_RESERVED_BITS 2
+
 #define RTL_RUN_ONCE_INIT {0}
 
 typedef union _RTL_RUN_ONCE {
@@ -2786,14 +2766,6 @@ typedef union _RTL_RUN_ONCE {
 
 typedef DWORD WINAPI RTL_RUN_ONCE_INIT_FN(PRTL_RUN_ONCE, PVOID, PVOID*);
 typedef RTL_RUN_ONCE_INIT_FN *PRTL_RUN_ONCE_INIT_FN;
-
-NTSYSAPI
-DWORD
-WINAPI
-RtlRunOnceComplete(
-    PRTL_RUN_ONCE,
-    DWORD,
-    PVOID);
 
 #endif
 
@@ -4383,6 +4355,17 @@ FORCEINLINE PVOID GetCurrentFiber(VOID)
     return ((PNT_TIB )(ULONG_PTR)_MoveFromCoprocessor(CP15_TPIDRURW))->FiberData;
   #endif
 }
+#elif defined (_M_ARM64)
+FORCEINLINE struct _TEB * NtCurrentTeb(void)
+{
+    //UNIMPLEMENTED;
+    return 0;
+}
+FORCEINLINE PVOID GetCurrentFiber(VOID)
+{
+    //UNIMPLEMENTED;
+    return 0;
+}
 #elif defined(_M_PPC)
 FORCEINLINE unsigned long _read_teb_dword(const unsigned long Offset)
 {
@@ -4477,6 +4460,8 @@ DbgRaiseAssertionFailure(VOID)
 #elif defined(_M_MIPS)
 #define YieldProcessor() __asm__ __volatile__("nop");
 #elif defined(_M_ARM)
+#define YieldProcessor __yield
+#elif defined(_M_ARM64)
 #define YieldProcessor __yield
 #else
 #error Unknown architecture

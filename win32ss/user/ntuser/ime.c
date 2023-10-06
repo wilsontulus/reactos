@@ -8,6 +8,8 @@
  */
 
 #include <win32k.h>
+#include <jpnvkeys.h>
+
 DBG_DEFAULT_CHANNEL(UserMisc);
 
 #define INVALID_THREAD_ID  ((ULONG)-1)
@@ -20,23 +22,6 @@ DBG_DEFAULT_CHANNEL(UserMisc);
 #define LANGID_KOREAN               MAKELANGID(LANG_KOREAN,   SUBLANG_KOREAN)
 #define LANGID_CHINESE_TRADITIONAL  MAKELANGID(LANG_CHINESE,  SUBLANG_CHINESE_TRADITIONAL)
 #define LANGID_NEUTRAL              MAKELANGID(LANG_NEUTRAL,  SUBLANG_NEUTRAL)
-
-// The special virtual keys for Japanese: Used for key states.
-// https://www.kthree.co.jp/kihelp/index.html?page=app/vkey&type=html
-#define VK_DBE_ALPHANUMERIC 0xF0
-#define VK_DBE_KATAKANA 0xF1
-#define VK_DBE_HIRAGANA 0xF2
-#define VK_DBE_SBCSCHAR 0xF3
-#define VK_DBE_DBCSCHAR 0xF4
-#define VK_DBE_ROMAN 0xF5
-#define VK_DBE_NOROMAN 0xF6
-#define VK_DBE_ENTERWORDREGISTERMODE 0xF7
-#define VK_DBE_ENTERCONFIGMODE 0xF8
-#define VK_DBE_FLUSHSTRING 0xF9
-#define VK_DBE_CODEINPUT 0xFA
-#define VK_DBE_NOCODEINPUT 0xFB
-#define VK_DBE_DETERINESTRING 0xFC
-#define VK_DBE_ENTERDLGCONVERSIONMODE 0xFD
 
 HIMC ghIMC = NULL;
 BOOL gfImeOpen = (BOOL)-1;
@@ -78,6 +63,7 @@ UINT FASTCALL IntGetImeHotKeyLanguageScore(HKL hKL, LANGID HotKeyLangId)
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
     {
+        ERR("%p\n", NtCurrentTeb());
         lcid = MAKELCID(LANGID_NEUTRAL, SORT_DEFAULT);
     }
     _SEH2_END;
@@ -183,7 +169,7 @@ IntGetImeHotKeyByKeyAndLang(PIMEHOTKEY pList, UINT uModKeys, UINT uLeftRight,
             continue;
 
         LangID = IntGetImeHotKeyLangId(pNode->dwHotKeyId);
-        if (LangID != TargetLangId)
+        if (LangID != TargetLangId && LangID != 0)
             continue;
 
         uModifiers = pNode->uModifiers;
@@ -358,32 +344,33 @@ IntSetImeHotKey(DWORD dwHotKeyId, UINT uModifiers, UINT uVirtualKey, HKL hKL, DW
     switch (dwAction)
     {
         case SETIMEHOTKEY_DELETE:
-            pNode = IntGetImeHotKeyById(gpImeHotKeyList, dwHotKeyId);
+            pNode = IntGetImeHotKeyById(gpImeHotKeyList, dwHotKeyId); /* Find hotkey by ID */
             if (!pNode)
             {
                 ERR("dwHotKeyId: 0x%lX\n", dwHotKeyId);
                 return FALSE;
             }
 
-            IntDeleteImeHotKey(&gpImeHotKeyList, pNode);
+            IntDeleteImeHotKey(&gpImeHotKeyList, pNode); /* Delete it */
             return TRUE;
 
         case SETIMEHOTKEY_ADD:
-            if (uVirtualKey == VK_PACKET)
+            if (LOWORD(uVirtualKey) == VK_PACKET) /* In case of VK_PACKET */
                 return FALSE;
 
             LangId = IntGetImeHotKeyLangId(dwHotKeyId);
             if (LangId == LANGID_KOREAN)
-                return FALSE;
+                return FALSE; /* Korean can't add IME hotkeys */
 
+            /* Find hotkey by key and language */
             pNode = IntGetImeHotKeyByKeyAndLang(gpImeHotKeyList,
                                                 (uModifiers & MOD_KEYS),
                                                 (uModifiers & MOD_LEFT_RIGHT),
                                                 uVirtualKey, LangId);
-            if (!pNode)
-                pNode = IntGetImeHotKeyById(gpImeHotKeyList, dwHotKeyId);
+            if (pNode == NULL) /* If not found */
+                pNode = IntGetImeHotKeyById(gpImeHotKeyList, dwHotKeyId); /* Find by ID */
 
-            if (pNode)
+            if (pNode) /* Already exists */
             {
                 pNode->uModifiers = uModifiers;
                 pNode->uVirtualKey = uVirtualKey;
@@ -391,23 +378,26 @@ IntSetImeHotKey(DWORD dwHotKeyId, UINT uModifiers, UINT uVirtualKey, HKL hKL, DW
                 return TRUE;
             }
 
+            /* Allocate new hotkey */
             pNode = ExAllocatePoolWithTag(PagedPool, sizeof(IMEHOTKEY), USERTAG_IMEHOTKEY);
             if (!pNode)
                 return FALSE;
 
+            /* Populate */
             pNode->pNext = NULL;
             pNode->dwHotKeyId = dwHotKeyId;
             pNode->uModifiers = uModifiers;
             pNode->uVirtualKey = uVirtualKey;
             pNode->hKL = hKL;
-            IntAddImeHotKey(&gpImeHotKeyList, pNode);
+            IntAddImeHotKey(&gpImeHotKeyList, pNode); /* Add it */
             return TRUE;
 
-        case SETIMEHOTKEY_DELETEALL:
-            IntFreeImeHotKeys();
+        case SETIMEHOTKEY_INITIALIZE:
+            IntFreeImeHotKeys(); /* Delete all the IME hotkeys */
             return TRUE;
 
         default:
+            ERR("0x%lX\n", dwAction);
             return FALSE;
     }
 }
@@ -428,7 +418,8 @@ NtUserGetImeHotKey(DWORD dwHotKeyId, LPUINT lpuModifiers, LPUINT lpuVirtualKey, 
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
     {
-        goto Quit;
+        ERR("%p, %p, %p\n", lpuModifiers, lpuVirtualKey, lphKL);
+        _SEH2_YIELD(goto Quit);
     }
     _SEH2_END;
 
@@ -445,6 +436,7 @@ NtUserGetImeHotKey(DWORD dwHotKeyId, LPUINT lpuModifiers, LPUINT lpuVirtualKey, 
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
     {
+        ERR("%p, %p, %p, %p\n", pNode, lpuModifiers, lpuVirtualKey, lphKL);
         pNode = NULL;
     }
     _SEH2_END;
@@ -533,6 +525,7 @@ NtUserSetThreadLayoutHandles(HKL hNewKL, HKL hOldKL)
         pti->hklPrev = hOldKL;
 
     UserAssignmentLock((PVOID*)&pti->KeyboardLayout, pNewKL);
+    pti->pClientInfo->hKL = pNewKL->hkl;
 
 Quit:
     UserLeave();
@@ -557,7 +550,7 @@ DWORD FASTCALL UserBuildHimcList(PTHREADINFO pti, DWORD dwCount, HIMC *phList)
     }
     else
     {
-        for (pti = GetW32ThreadInfo()->ppi->ptiList; pti; pti = pti->ptiSibling)
+        for (pti = gptiCurrent->ppi->ptiList; pti; pti = pti->ptiSibling)
         {
             for (pIMC = pti->spDefaultImc; pIMC; pIMC = pIMC->pImcNext)
             {
@@ -711,7 +704,7 @@ NtUserBuildHimcList(DWORD dwThreadId, DWORD dwCount, HIMC *phList, LPDWORD pdwCo
 
     if (dwThreadId == 0)
     {
-        pti = GetW32ThreadInfo();
+        pti = gptiCurrent;
     }
     else if (dwThreadId == INVALID_THREAD_ID)
     {
@@ -732,7 +725,8 @@ NtUserBuildHimcList(DWORD dwThreadId, DWORD dwCount, HIMC *phList, LPDWORD pdwCo
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
     {
-        goto Quit;
+        ERR("%p, %p\n", phList, pdwCount);
+        _SEH2_YIELD(goto Quit);
     }
     _SEH2_END;
 
@@ -953,11 +947,15 @@ Quit:
 }
 
 // Win: GetImeInfoEx
-BOOL FASTCALL UserGetImeInfoEx(LPVOID pUnknown, PIMEINFOEX pInfoEx, IMEINFOEXCLASS SearchType)
+BOOL FASTCALL
+UserGetImeInfoEx(
+    _Inout_ PWINSTATION_OBJECT pWinSta,
+    _Inout_ PIMEINFOEX pInfoEx,
+    _In_ IMEINFOEXCLASS SearchType)
 {
     PKL pkl, pklHead;
 
-    if (!gspklBaseLayout)
+    if (!pWinSta || !gspklBaseLayout)
         return FALSE;
 
     pkl = pklHead = gspklBaseLayout;
@@ -970,7 +968,10 @@ BOOL FASTCALL UserGetImeInfoEx(LPVOID pUnknown, PIMEINFOEX pInfoEx, IMEINFOEXCLA
             if (pInfoEx->hkl == pkl->hkl)
             {
                 if (!pkl->piiex)
+                {
+                    ERR("!pkl->piiex at %p\n", pkl->hkl);
                     break;
+                }
 
                 *pInfoEx = *pkl->piiex;
                 return TRUE;
@@ -996,7 +997,7 @@ BOOL FASTCALL UserGetImeInfoEx(LPVOID pUnknown, PIMEINFOEX pInfoEx, IMEINFOEXCLA
     }
     else
     {
-        /* Do nothing */
+        ERR("SearchType: %d\n", SearchType);
     }
 
     return FALSE;
@@ -1010,6 +1011,7 @@ NtUserGetImeInfoEx(
 {
     IMEINFOEX ImeInfoEx;
     BOOL ret = FALSE;
+    PWINSTATION_OBJECT pWinSta;
 
     UserEnterShared();
 
@@ -1021,25 +1023,29 @@ NtUserGetImeInfoEx(
 
     _SEH2_TRY
     {
-        ProbeForWrite(pImeInfoEx, sizeof(*pImeInfoEx), 1);
+        ProbeForRead(pImeInfoEx, sizeof(*pImeInfoEx), 1);
         ImeInfoEx = *pImeInfoEx;
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
     {
-        goto Quit;
+        ERR("%p\n", pImeInfoEx);
+        _SEH2_YIELD(goto Quit);
     }
     _SEH2_END;
 
-    ret = UserGetImeInfoEx(NULL, &ImeInfoEx, SearchType);
+    pWinSta = IntGetProcessWindowStation(NULL);
+    ret = UserGetImeInfoEx(pWinSta, &ImeInfoEx, SearchType);
     if (!ret)
         goto Quit;
 
     _SEH2_TRY
     {
+        ProbeForWrite(pImeInfoEx, sizeof(*pImeInfoEx), 1);
         *pImeInfoEx = ImeInfoEx;
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
     {
+        ERR("%p\n", pImeInfoEx);
         ret = FALSE;
     }
     _SEH2_END;
@@ -1080,9 +1086,15 @@ Quit:
 }
 
 // Win: SetImeInfoEx
-BOOL FASTCALL UserSetImeInfoEx(LPVOID pUnknown, PIMEINFOEX pImeInfoEx)
+BOOL FASTCALL
+UserSetImeInfoEx(
+    _Inout_ PWINSTATION_OBJECT pWinSta,
+    _Inout_ PIMEINFOEX pImeInfoEx)
 {
     PKL pklHead, pkl;
+
+    if (!pWinSta || !gspklBaseLayout)
+        return FALSE;
 
     pkl = pklHead = gspklBaseLayout;
 
@@ -1095,7 +1107,10 @@ BOOL FASTCALL UserSetImeInfoEx(LPVOID pUnknown, PIMEINFOEX pImeInfoEx)
         }
 
         if (!pkl->piiex)
+        {
+            ERR("!pkl->piiex at %p\n", pkl->hkl);
             return FALSE;
+        }
 
         if (!pkl->piiex->fLoadFlag)
             *pkl->piiex = *pImeInfoEx;
@@ -1112,6 +1127,7 @@ NtUserSetImeInfoEx(PIMEINFOEX pImeInfoEx)
 {
     BOOL ret = FALSE;
     IMEINFOEX ImeInfoEx;
+    PWINSTATION_OBJECT pWinSta;
 
     UserEnterExclusive();
 
@@ -1128,11 +1144,13 @@ NtUserSetImeInfoEx(PIMEINFOEX pImeInfoEx)
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
     {
-        goto Quit;
+        ERR("%p\n", pImeInfoEx);
+        _SEH2_YIELD(goto Quit);
     }
     _SEH2_END;
 
-    ret = UserSetImeInfoEx(NULL, &ImeInfoEx);
+    pWinSta = IntGetProcessWindowStation(NULL);
+    ret = UserSetImeInfoEx(pWinSta, &ImeInfoEx);
 
 Quit:
     UserLeave();
@@ -1167,7 +1185,7 @@ VOID FASTCALL IntImeSetFutureOwner(PWND pImeWnd, PWND pwndOwner)
     pwndParent = pwndNode->spwndParent;
     if (!pwndParent || pwndOwner != pwndNode)
     {
-        pImeWnd->spwndOwner = pwndNode;
+        WndSetOwner(pImeWnd, pwndNode);
         return;
     }
 
@@ -1193,7 +1211,7 @@ VOID FASTCALL IntImeSetFutureOwner(PWND pImeWnd, PWND pwndOwner)
         }
     }
 
-    pImeWnd->spwndOwner = pwndNode;
+    WndSetOwner(pImeWnd, pwndNode);
 }
 
 // Get the last non-IME-like top-most window on the desktop.
@@ -1376,7 +1394,7 @@ NtUserSetImeOwnerWindow(HWND hImeWnd, HWND hwndFocus)
             }
         }
 
-        pImeWnd->spwndOwner = pwndTopLevel;
+        WndSetOwner(pImeWnd, pwndTopLevel);
         IntImeCheckTopmost(pImeWnd);
     }
     else
@@ -1388,7 +1406,7 @@ NtUserSetImeOwnerWindow(HWND hImeWnd, HWND hwndFocus)
         {
             if (pwndActive && ptiIme == pwndActive->head.pti && !IS_WND_IMELIKE(pwndActive))
             {
-                pImeWnd->spwndOwner = pwndActive;
+                WndSetOwner(pImeWnd, pwndActive);
             }
             else
             {
@@ -1988,7 +2006,7 @@ PWND FASTCALL co_IntCreateDefaultImeWindow(PWND pwndTarget, HINSTANCE hInst)
         }
         _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
         {
-            NOTHING;
+            ERR("%p\n", pimeui);
         }
         _SEH2_END;
     }
@@ -2019,7 +2037,7 @@ BOOL FASTCALL IntImeCanDestroyDefIMEforChild(PWND pImeWnd, PWND pwndTarget)
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
     {
-        NOTHING;
+        ERR("%p\n", pimeui);
     }
     _SEH2_END;
 
@@ -2064,7 +2082,7 @@ BOOL FASTCALL IntImeCanDestroyDefIME(PWND pImeWnd, PWND pwndTarget)
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
     {
-        NOTHING;
+        ERR("%p\n", pimeui);
     }
     _SEH2_END;
 
@@ -2102,7 +2120,7 @@ BOOL FASTCALL IntImeCanDestroyDefIME(PWND pImeWnd, PWND pwndTarget)
     if (pImeWnd->spwndOwner && pwndTarget != pImeWnd->spwndOwner)
         return FALSE;
 
-    pImeWnd->spwndOwner = NULL;
+    WndSetOwner(pImeWnd, NULL);
     return TRUE;
 }
 
@@ -2173,6 +2191,7 @@ BOOL FASTCALL IntCheckImeShowStatus(PWND pwndIme, PTHREADINFO pti)
         }
         _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
         {
+            ERR("%p\n", pimeui);
             pwndIMC = NULL;
         }
         _SEH2_END;
@@ -2202,7 +2221,6 @@ BOOL FASTCALL IntCheckImeShowStatus(PWND pwndIme, PTHREADINFO pti)
 }
 
 // Send a UI message.
-// Win: xxxSendMessageToUI
 LRESULT FASTCALL
 IntSendMessageToUI(PTHREADINFO ptiIME, PIMEUI pimeui, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
@@ -2228,6 +2246,7 @@ IntSendMessageToUI(PTHREADINFO ptiIME, PIMEUI pimeui, UINT uMsg, WPARAM wParam, 
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
     {
+        ERR("%p\n", pimeui);
         pwndUI = NULL;
     }
     _SEH2_END;
@@ -2244,7 +2263,8 @@ IntSendMessageToUI(PTHREADINFO ptiIME, PIMEUI pimeui, UINT uMsg, WPARAM wParam, 
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
     {
-        goto Quit;
+        ERR("%p\n", pimeui);
+        _SEH2_YIELD(goto Quit);
     }
     _SEH2_END;
 
@@ -2268,7 +2288,8 @@ IntSendMessageToUI(PTHREADINFO ptiIME, PIMEUI pimeui, UINT uMsg, WPARAM wParam, 
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
     {
-        goto Quit;
+        ERR("%p\n", pimeui);
+        _SEH2_YIELD(goto Quit);
     }
     _SEH2_END;
 
@@ -2302,7 +2323,6 @@ IntSendOpenStatusNotify(PTHREADINFO ptiIME, PIMEUI pimeui, PWND pWnd, BOOL bOpen
 }
 
 // Update the IME status and send a notification.
-// Win: xxxNotifyImeShowStatus
 VOID FASTCALL IntNotifyImeShowStatus(PWND pImeWnd)
 {
     PIMEUI pimeui;
@@ -2342,9 +2362,12 @@ VOID FASTCALL IntNotifyImeShowStatus(PWND pImeWnd)
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
     {
+        ERR("%p, %p\n", pImeWnd, pimeui);
+
         if (pti != ptiIME)
             KeDetachProcess();
-        return;
+
+        _SEH2_YIELD(return);
     }
     _SEH2_END;
 
@@ -2368,6 +2391,13 @@ BOOL FASTCALL IntBroadcastImeShowStatusChange(PWND pImeWnd, BOOL bShow)
     gfIMEShowStatus = bShow;
     IntNotifyImeShowStatus(pImeWnd);
     return TRUE;
+}
+
+/* Win: xxxCheckImeShowStatusInThread */
+VOID FASTCALL IntCheckImeShowStatusInThread(PWND pImeWnd)
+{
+    if (IS_IMM_MODE() && !(pImeWnd->state2 & WNDS2_INDESTROY))
+        IntCheckImeShowStatus(pImeWnd, pImeWnd->head.pti);
 }
 
 /* EOF */

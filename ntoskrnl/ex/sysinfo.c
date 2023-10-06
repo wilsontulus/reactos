@@ -342,17 +342,17 @@ ExGetCurrentProcessorCpuUsage(PULONG CpuUsage)
  */
 VOID
 NTAPI
-ExGetCurrentProcessorCounts(PULONG ThreadKernelTime,
-                            PULONG TotalCpuTime,
+ExGetCurrentProcessorCounts(PULONG IdleTime,
+                            PULONG KernelAndUserTime,
                             PULONG ProcessorNumber)
 {
     PKPRCB Prcb;
 
     Prcb = KeGetCurrentPrcb();
 
-    *ThreadKernelTime = Prcb->KernelTime + Prcb->UserTime;
-    *TotalCpuTime = Prcb->CurrentThread->KernelTime;
-    *ProcessorNumber = KeGetCurrentProcessorNumber();
+    *IdleTime = Prcb->IdleThread->KernelTime;
+    *KernelAndUserTime = Prcb->KernelTime + Prcb->UserTime;
+    *ProcessorNumber = (ULONG)Prcb->Number;
 }
 
 /*
@@ -564,11 +564,12 @@ NtEnumerateSystemEnvironmentValuesEx(IN ULONG InformationClass,
 
 NTSTATUS
 NTAPI
-NtQuerySystemEnvironmentValueEx(IN PUNICODE_STRING VariableName,
-                                IN LPGUID VendorGuid,
-                                IN PVOID Value,
-                                IN OUT PULONG ReturnLength,
-                                IN OUT PULONG Attributes)
+NtQuerySystemEnvironmentValueEx(
+    _In_ PUNICODE_STRING VariableName,
+    _In_ LPGUID VendorGuid,
+    _Out_opt_ PVOID Value,
+    _Inout_ PULONG ReturnLength,
+    _Out_opt_ PULONG Attributes)
 {
     UNIMPLEMENTED;
     return STATUS_NOT_IMPLEMENTED;
@@ -576,11 +577,12 @@ NtQuerySystemEnvironmentValueEx(IN PUNICODE_STRING VariableName,
 
 NTSTATUS
 NTAPI
-NtSetSystemEnvironmentValueEx(IN PUNICODE_STRING VariableName,
-                              IN LPGUID VendorGuid,
-                              IN PVOID Value,
-                              IN OUT PULONG ReturnLength,
-                              IN OUT PULONG Attributes)
+NtSetSystemEnvironmentValueEx(
+    _In_ PUNICODE_STRING VariableName,
+    _In_ LPGUID VendorGuid,
+    _In_reads_bytes_opt_(ValueLength) PVOID Value,
+    _In_ ULONG ValueLength,
+    _In_ ULONG Attributes)
 {
     UNIMPLEMENTED;
     return STATUS_NOT_IMPLEMENTED;
@@ -714,13 +716,8 @@ QSI_DEF(SystemPerformanceInformation)
     }
 
     Spi->AvailablePages = (ULONG)MmAvailablePages;
-    /*
-     *   Add up all the used "Committed" memory + pagefile.
-     *   Not sure this is right. 8^\
-     */
-    Spi->CommittedPages = MiMemoryConsumers[MC_SYSTEM].PagesUsed +
-                          MiMemoryConsumers[MC_USER].PagesUsed +
-                          MiUsedSwapPages;
+
+    Spi->CommittedPages = MmTotalCommittedPages;
     /*
      *  Add up the full system total + pagefile.
      *  All this make Taskmgr happy but not sure it is the right numbers.
@@ -728,7 +725,7 @@ QSI_DEF(SystemPerformanceInformation)
      */
     Spi->CommitLimit = MmNumberOfPhysicalPages + MiFreeSwapPages + MiUsedSwapPages;
 
-    Spi->PeakCommitment = 0; /* FIXME */
+    Spi->PeakCommitment = MmPeakCommitment;
     Spi->PageFaultCount = 0; /* FIXME */
     Spi->CopyOnWriteCount = 0; /* FIXME */
     Spi->TransitionCount = 0; /* FIXME */
@@ -1031,7 +1028,11 @@ QSI_DEF(SystemProcessInformation)
                 SpiCurrent->BasePriority = Process->Pcb.BasePriority;
                 SpiCurrent->UniqueProcessId = Process->UniqueProcessId;
                 SpiCurrent->InheritedFromUniqueProcessId = Process->InheritedFromUniqueProcessId;
-                SpiCurrent->HandleCount = ObGetProcessHandleCount(Process);
+
+                /* PsIdleProcess shares its handle table with PsInitialSystemProcess,
+                 * so return the handle count for System only, not Idle one. */
+                SpiCurrent->HandleCount = (Process == PsIdleProcess) ? 0 : ObGetProcessHandleCount(Process);
+
                 SpiCurrent->PeakVirtualSize = Process->PeakVirtualSize;
                 SpiCurrent->VirtualSize = Process->VirtualSize;
                 SpiCurrent->PageFaultCount = Process->Vm.PageFaultCount;

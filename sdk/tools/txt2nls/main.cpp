@@ -1,6 +1,6 @@
 /*
  * PROJECT:     ReactOS TXT to NLS Converter
- * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later.html)
+ * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
  * FILE:        sdk/tools/txt2nls/main.c
  * COPYRIGHT:   Copyright 2021 Jérôme Gardou <jerome.gardou@reactos.org>
  */
@@ -11,6 +11,7 @@
 #include <vector>
 #include <cstring>
 #include <string>
+#include <cstdint>
 
 static const char whitespaces[] = " \t\f\v\n\r";
 static long line_number = -1;

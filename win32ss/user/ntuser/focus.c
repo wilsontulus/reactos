@@ -242,7 +242,7 @@ IntDeactivateWindow(PTHREADINFO pti, HANDLE tid)
    if ( pti->MessageQueue->spwndActive )
    {
       pwndPrev = pti->MessageQueue->spwndActive;
-      ptiPrev = pwndPrev->head.pti; 
+      ptiPrev = pwndPrev->head.pti;
 
       if (!co_IntSendDeactivateMessages(UserHMGetHandle(pwndPrev), 0, TRUE))
       {
@@ -403,7 +403,7 @@ IntActivateWindow(PWND Wnd, PTHREADINFO pti, HANDLE tid, DWORD Type)
       {
            Wnd = pmq->spwndActive; // Use active window from current queue.
 
-           UserRefObjectCo(Wnd, &Ref);                 
+           UserRefObjectCo(Wnd, &Ref);
 
            co_IntSendMessage( UserHMGetHandle(Wnd), WM_NCACTIVATE, TRUE, 0);
 
@@ -433,7 +433,7 @@ co_IntMakeWindowActive(PWND Window)
       {
          spwndOwner = spwndOwner->spwndOwner;
       }
-      spwndOwner->spwndLastActive = Window;
+      WndSetLastActive(spwndOwner, Window);
       return TRUE;
    }
    ERR("MakeWindowActive Failed!\n");
@@ -734,7 +734,7 @@ IsAllowedFGActive(PTHREADINFO pti, PWND Wnd)
         pti->rpdesk != gpdeskInputDesktop ||  // not current Desktop,
         pti->MessageQueue == gpqForeground || // if already the queue foreground,
         IsFGLocked() ||                       // foreground is locked,
-        Wnd->ExStyle & WS_EX_NOACTIVATE )     // or,,, does not become the foreground window when the user clicks it.
+        (Wnd->ExStyle & WS_EX_NOACTIVATE))    // or, does not become the foreground window when the user clicks it.
    {
       return FALSE;
    }
@@ -830,7 +830,7 @@ co_IntSetForegroundMessageQueue(
               MsqPostMessage(ptiPrev, &Msg, FALSE, QS_EVENT, POSTEVENT_DAW, (LONG_PTR)tid);
           }
       }
-      
+
       pumqChg = NULL;
       if ( ptiChg && !(ptiChg->TIF_flags & TIF_INCLEANUP) )
       {
@@ -1041,9 +1041,8 @@ co_IntSetActiveWindow(
    ThreadQueue = pti->MessageQueue;
    ASSERT(ThreadQueue != 0);
 
-   hWndPrev = ThreadQueue->spwndActive ? UserHMGetHandle(ThreadQueue->spwndActive) : NULL;
-
    pWndChg = ThreadQueue->spwndActive; // Keep to notify of a preemptive switch.
+   hWndPrev = (pWndChg ? UserHMGetHandle(pWndChg) : NULL);
 
    if ( !Wnd || Wnd == UserGetDesktopWindow() )
    {
@@ -1054,6 +1053,9 @@ co_IntSetActiveWindow(
    ASSERT_REFS_CO(Wnd);
    hWnd = UserHMGetHandle(Wnd);
    //ERR("co_IntSetActiveWindow 2 hWnd 0x%p\n",hWnd);
+
+   if (Wnd->ExStyle & WS_EX_NOACTIVATE)
+       return TRUE;
 
    /* check if the specified window can be set in the input data of a given queue */
    if ( ThreadQueue != Wnd->head.pti->MessageQueue )
@@ -1248,9 +1250,12 @@ BOOL FASTCALL
 co_IntMouseActivateWindow(PWND Wnd)
 {
    TRACE("Mouse Active\n");
+   if (Wnd && (Wnd->ExStyle & WS_EX_NOACTIVATE))
+      return TRUE;
    return co_IntSetForegroundAndFocusWindow(Wnd, TRUE, TRUE);
 }
 
+/* Win: PWND xxxSetActiveWindow(Wnd) */
 BOOL FASTCALL
 UserSetActiveWindow( _In_opt_ PWND Wnd )
 {
@@ -1660,7 +1665,7 @@ NtUserSetActiveWindow(HWND hWnd)
 {
    USER_REFERENCE_ENTRY Ref;
    HWND hWndPrev;
-   PWND Window;
+   PWND Window, pwndPrev;
    DECLARE_RETURN(HWND);
 
    TRACE("Enter NtUserSetActiveWindow(%p)\n", hWnd);
@@ -1679,11 +1684,12 @@ NtUserSetActiveWindow(HWND hWnd)
    if (!Window ||
         Window->head.pti->MessageQueue == gptiCurrent->MessageQueue)
    {
-      hWndPrev = gptiCurrent->MessageQueue->spwndActive ? UserHMGetHandle(gptiCurrent->MessageQueue->spwndActive) : NULL;
+      pwndPrev = gptiCurrent->MessageQueue->spwndActive;
+      hWndPrev = (pwndPrev ? UserHMGetHandle(pwndPrev) : NULL);
       if (Window) UserRefObjectCo(Window, &Ref);
       UserSetActiveWindow(Window);
       if (Window) UserDerefObjectCo(Window);
-      RETURN( hWndPrev ? (IntIsWindow(hWndPrev) ? hWndPrev : 0) : 0 );
+      RETURN(hWndPrev ? (IntIsWindow(hWndPrev) ? hWndPrev : NULL) : NULL);
    }
    RETURN( NULL);
 

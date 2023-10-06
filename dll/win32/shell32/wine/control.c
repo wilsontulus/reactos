@@ -766,45 +766,30 @@ Control_EnumWinProc(
     _In_ LPARAM lParam)
 {
     AppDlgFindData* pData = (AppDlgFindData*)lParam;
-    WCHAR szClassName[256] = L"";
+    UINT_PTR sAppletNo;
+    HANDLE hRes;
+    WCHAR szAppFile[MAX_PATH];
 
     if (pData->hRunDLL == hwnd)
-    {
-        // Skip self instance
-        return TRUE;
-    }
+        return TRUE; /* Skip self instance */
 
-    if (GetClassNameW(hwnd, szClassName, _countof(szClassName)))
+    sAppletNo = (UINT_PTR)GetPropW(hwnd, (LPTSTR)MAKEINTATOM(pData->aCPLFlags));
+    if (sAppletNo != pData->sAppletNo)
+        return TRUE; /* Continue enumeration */
+
+    hRes = GetPropW(hwnd, (LPTSTR)MAKEINTATOM(pData->aCPLName));
+    GlobalGetAtomNameW((ATOM)HandleToUlong(hRes), szAppFile, _countof(szAppFile));
+    if (wcscmp(szAppFile, pData->szAppFile) == 0)
     {
-        // Note: A comparison on identical is not possible, the class names are different.
-        // ReactOS: 'rundll32_window'
-        // WinXP: 'RunDLL'
-        // other OS: not checked
-        if (StrStrIW(szClassName, L"rundll32") != NULL)
+        HWND hDialog = GetLastActivePopup(hwnd);
+        if (IsWindow(hDialog))
         {
-            UINT_PTR sAppletNo;
-
-            sAppletNo = (UINT_PTR)GetPropW(hwnd, (LPTSTR)MAKEINTATOM(pData->aCPLFlags));
-            if (sAppletNo == pData->sAppletNo)
-            {
-                HANDLE hRes;
-                WCHAR szAppFile[MAX_PATH];
-
-                hRes = GetPropW(hwnd, (LPTSTR)MAKEINTATOM(pData->aCPLName));
-                GlobalGetAtomNameW((ATOM)HandleToUlong(hRes), szAppFile, _countof(szAppFile));
-                if (wcscmp(szAppFile, pData->szAppFile) == 0)
-                {
-                    HWND hDialog = GetLastActivePopup(hwnd);
-                    if (IsWindow(hDialog))
-                    {
-                        pData->hDlgResult = hDialog;
-                        return FALSE; // stop enumeration
-                    }
-                }
-            }
+            pData->hDlgResult = hDialog;
+            return FALSE; /* Stop enumeration */
         }
     }
-    return TRUE; // continue enumeration
+
+    return TRUE; /* Continue enumeration */
 }
 
 /**
@@ -819,10 +804,41 @@ Control_EnumWinProc(
 static void
 Control_ShowAppletInTaskbar(CPlApplet* applet, UINT index)
 {
+    HICON hSmallIcon;
     ITaskbarList* pTaskbar = NULL;
 
+    /* Try to add a taskbar button only if the applet's parent window is the desktop */
+    if (GetParent(applet->hWnd) != NULL)
+    {
+        return;
+    }
+
     SetWindowTextW(applet->hWnd, applet->info[index].name);
-    SendMessageW(applet->hWnd, WM_SETICON, ICON_SMALL, (LPARAM)applet->info[index].icon);
+
+    /* Set large icon for the taskbar button */
+    if (applet->info[index].icon)
+    {
+        SendMessageW(applet->hWnd, WM_SETICON, ICON_BIG, (LPARAM)applet->info[index].icon);
+    }
+
+    /* Try loading the small icon for the taskbar button */
+    hSmallIcon = (HICON)LoadImageW(applet->hModule,
+                                   MAKEINTRESOURCEW(applet->info[index].idIcon),
+                                   IMAGE_ICON,
+                                   GetSystemMetrics(SM_CXSMICON),
+                                   GetSystemMetrics(SM_CYSMICON),
+                                   0);
+    if (hSmallIcon)
+    {
+        SendMessageW(applet->hWnd, WM_SETICON, ICON_SMALL, (LPARAM)hSmallIcon);
+    }
+    else
+    {
+        if (applet->info[index].icon)
+        {
+            SendMessageW(applet->hWnd, WM_SETICON, ICON_SMALL, (LPARAM)applet->info[index].icon);
+        }
+    }
 
     /* Add button to the taskbar */
     ShowWindow(applet->hWnd, SW_SHOWMINNOACTIVE);

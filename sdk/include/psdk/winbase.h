@@ -201,23 +201,26 @@ extern "C" {
 #define OPEN_EXISTING	3
 #define OPEN_ALWAYS	4
 #define TRUNCATE_EXISTING	5
-#define COPY_FILE_ALLOW_DECRYPTED_DESTINATION 0x00000008
-#define COPY_FILE_FAIL_IF_EXISTS 0x00000001
-#define COPY_FILE_RESTARTABLE 0x00000002
-#define COPY_FILE_OPEN_SOURCE_FOR_WRITE 0x00000004
-#define FILE_FLAG_WRITE_THROUGH	0x80000000
-#define FILE_FLAG_OVERLAPPED	1073741824
-#define FILE_FLAG_NO_BUFFERING	536870912
-#define FILE_FLAG_RANDOM_ACCESS	268435456
-#define FILE_FLAG_SEQUENTIAL_SCAN	134217728
-#define FILE_FLAG_DELETE_ON_CLOSE	67108864
-#define FILE_FLAG_BACKUP_SEMANTICS	33554432
-#define FILE_FLAG_POSIX_SEMANTICS	16777216
-#define FILE_FLAG_OPEN_REPARSE_POINT	2097152
-#define FILE_FLAG_OPEN_NO_RECALL	1048576
+
+#define COPY_FILE_FAIL_IF_EXISTS                0x00000001
+#define COPY_FILE_RESTARTABLE                   0x00000002
+#define COPY_FILE_OPEN_SOURCE_FOR_WRITE         0x00000004
+#define COPY_FILE_ALLOW_DECRYPTED_DESTINATION   0x00000008
+
+#define FILE_FLAG_WRITE_THROUGH                 0x80000000
+#define FILE_FLAG_OVERLAPPED                    0x40000000
+#define FILE_FLAG_NO_BUFFERING                  0x20000000
+#define FILE_FLAG_RANDOM_ACCESS                 0x10000000
+#define FILE_FLAG_SEQUENTIAL_SCAN               0x08000000
+#define FILE_FLAG_DELETE_ON_CLOSE               0x04000000
+#define FILE_FLAG_BACKUP_SEMANTICS              0x02000000
+#define FILE_FLAG_POSIX_SEMANTICS               0x01000000
+#define FILE_FLAG_OPEN_REPARSE_POINT            0x00200000
+#define FILE_FLAG_OPEN_NO_RECALL                0x00100000
 #if (_WIN32_WINNT >= 0x0500)
-#define FILE_FLAG_FIRST_PIPE_INSTANCE	524288
+#define FILE_FLAG_FIRST_PIPE_INSTANCE           0x00080000
 #endif
+
 #define CLRDTR 6
 #define CLRRTS 4
 #define SETDTR 5
@@ -1542,7 +1545,37 @@ void WINAPI AddRefActCtx(_Inout_ HANDLE);
 _Ret_maybenull_ PVOID WINAPI AddVectoredExceptionHandler(_In_ ULONG, _In_ PVECTORED_EXCEPTION_HANDLER);
 _Ret_maybenull_ PVOID WINAPI AddVectoredContinueHandler(_In_ ULONG, _In_ PVECTORED_EXCEPTION_HANDLER);
 #endif
-BOOL WINAPI AccessCheckByType(PSECURITY_DESCRIPTOR,PSID,HANDLE,DWORD,POBJECT_TYPE_LIST,DWORD,PGENERIC_MAPPING,PPRIVILEGE_SET,LPDWORD,LPDWORD,LPBOOL);
+
+BOOL
+WINAPI
+AccessCheckByType(
+  _In_ PSECURITY_DESCRIPTOR pSecurityDescriptor,
+  _In_opt_ PSID PrincipalSelfSid,
+  _In_ HANDLE ClientToken,
+  _In_ DWORD DesiredAccess,
+  _In_reads_opt_(ObjectTypeListLength) POBJECT_TYPE_LIST ObjectTypeList,
+  _In_ DWORD ObjectTypeListLength,
+  _In_ PGENERIC_MAPPING GenericMapping,
+  _Out_writes_bytes_(*PrivilegeSetLength)PPRIVILEGE_SET PrivilegeSet,
+  _Inout_ LPDWORD PrivilegeSetLength,
+  _Out_ LPDWORD GrantedAccess,
+  _Out_ LPBOOL AccessStatus);
+
+BOOL
+WINAPI
+AccessCheckByTypeResultList(
+  _In_ PSECURITY_DESCRIPTOR pSecurityDescriptor,
+  _In_opt_ PSID PrincipalSelfSid,
+  _In_ HANDLE ClientToken,
+  _In_ DWORD DesiredAccess,
+  _In_reads_(ObjectTypeListLength) POBJECT_TYPE_LIST ObjectTypeList,
+  _In_ DWORD ObjectTypeListLength,
+  _In_ PGENERIC_MAPPING GenericMapping,
+  _Out_writes_bytes_(*PrivilegeSetLength) PPRIVILEGE_SET PrivilegeSet,
+  _Inout_ LPDWORD PrivilegeSetLength,
+  _Out_writes_(ObjectTypeListLength) LPDWORD GrantedAccess,
+  _Out_writes_(ObjectTypeListLength) LPBOOL AccessStatus);
+
 BOOL WINAPI AdjustTokenGroups(HANDLE,BOOL,PTOKEN_GROUPS,DWORD,PTOKEN_GROUPS,PDWORD);
 BOOL WINAPI AdjustTokenPrivileges(HANDLE,BOOL,PTOKEN_PRIVILEGES,DWORD,PTOKEN_PRIVILEGES,PDWORD);
 BOOL WINAPI AllocateAndInitializeSid(PSID_IDENTIFIER_AUTHORITY,BYTE,DWORD,DWORD,DWORD,DWORD,DWORD,DWORD,DWORD,DWORD,PSID*);
@@ -1971,25 +2004,7 @@ _Ret_maybenull_ HRSRC WINAPI FindResourceA(_In_opt_ HMODULE,_In_ LPCSTR, _In_ LP
 _Ret_maybenull_ HRSRC WINAPI FindResourceW(_In_opt_ HMODULE,_In_ LPCWSTR, _In_ LPCWSTR);
 _Ret_maybenull_ HRSRC WINAPI FindResourceExA(_In_opt_ HMODULE, _In_ LPCSTR, _In_ LPCSTR, _In_ WORD);
 HRSRC WINAPI FindResourceExW(HINSTANCE,LPCWSTR,LPCWSTR,WORD);
-#if (_WIN32_WINNT >= 0x0502)
 
-DWORD
-WINAPI
-GetFirmwareEnvironmentVariableA(
-  _In_ LPCSTR lpName,
-  _In_ LPCSTR lpGuid,
-  _Out_writes_bytes_to_opt_(nSize, return) PVOID pBuffer,
-  _In_ DWORD nSize);
-
-DWORD
-WINAPI
-GetFirmwareEnvironmentVariableW(
-  _In_ LPCWSTR lpName,
-  _In_ LPCWSTR lpGuid,
-  _Out_writes_bytes_to_opt_(nSize, return) PVOID pBuffer,
-  _In_ DWORD nSize);
-
-#endif
 BOOL WINAPI FlushFileBuffers(HANDLE);
 BOOL WINAPI FlushInstructionCache(HANDLE,LPCVOID,SIZE_T);
 BOOL WINAPI FlushViewOfFile(LPCVOID,SIZE_T);
@@ -2396,15 +2411,6 @@ VOID WINAPI GetStartupInfoW(LPSTARTUPINFOW);
 HANDLE WINAPI GetStdHandle(_In_ DWORD);
 UINT WINAPI GetSystemDirectoryA(LPSTR,UINT);
 UINT WINAPI GetSystemDirectoryW(LPWSTR,UINT);
-
-WINBASEAPI
-UINT
-WINAPI
-GetSystemFirmwareTable(
-  _In_ DWORD FirmwareTableProviderSignature,
-  _In_ DWORD FirmwareTableID,
-  _Out_writes_bytes_to_opt_(BufferSize,return) PVOID pFirmwareTableBuffer,
-  _In_ DWORD BufferSize);
 
 VOID WINAPI GetSystemInfo(LPSYSTEM_INFO);
 BOOL WINAPI GetSystemPowerStatus(_Out_ LPSYSTEM_POWER_STATUS);
@@ -3058,7 +3064,14 @@ SearchPathA(
   _Out_writes_to_opt_(nBufferLength, return + 1) LPSTR lpBuffer,
   _Out_opt_ LPSTR *lpFilePart);
 
-DWORD WINAPI SearchPathW(LPCWSTR,LPCWSTR,LPCWSTR,DWORD,LPWSTR,LPWSTR*);
+DWORD WINAPI
+SearchPathW(
+    _In_opt_ LPCWSTR lpPath,
+    _In_ LPCWSTR lpFileName,
+    _In_opt_ LPCWSTR lpExtension,
+    _In_ DWORD nBufferLength,
+    _Out_writes_to_opt_(nBufferLength, return +1) LPWSTR lpBuffer,
+    _Out_opt_ LPWSTR *lpFilePart);
 BOOL WINAPI SetAclInformation(PACL,PVOID,DWORD,ACL_INFORMATION_CLASS);
 BOOL WINAPI SetCommBreak(_In_ HANDLE);
 
@@ -3130,6 +3143,50 @@ BOOL WINAPI SetFileValidData(HANDLE,LONGLONG);
 
 #if (_WIN32_WINNT >= 0x0502)
 
+WINBASEAPI
+UINT
+WINAPI
+EnumSystemFirmwareTables(
+    _In_ DWORD FirmwareTableProviderSignature,
+    _Out_writes_bytes_to_opt_(BufferSize, return) PVOID pFirmwareTableEnumBuffer,
+    _In_ DWORD BufferSize);
+
+WINBASEAPI
+UINT
+WINAPI
+GetSystemFirmwareTable(
+    _In_ DWORD FirmwareTableProviderSignature,
+    _In_ DWORD FirmwareTableID,
+    _Out_writes_bytes_to_opt_(BufferSize, return) PVOID pFirmwareTableBuffer,
+    _In_ DWORD BufferSize);
+
+_Success_(return > 0)
+WINBASEAPI
+DWORD
+WINAPI
+GetFirmwareEnvironmentVariableA(
+    _In_ LPCSTR lpName,
+    _In_ LPCSTR lpGuid,
+    _Out_writes_bytes_to_opt_(nSize, return) PVOID pBuffer,
+    _In_ DWORD nSize);
+
+_Success_(return > 0)
+WINBASEAPI
+DWORD
+WINAPI
+GetFirmwareEnvironmentVariableW(
+    _In_ LPCWSTR lpName,
+    _In_ LPCWSTR lpGuid,
+    _Out_writes_bytes_to_opt_(nSize, return) PVOID pBuffer,
+    _In_ DWORD nSize);
+
+#ifdef UNICODE
+#define GetFirmwareEnvironmentVariable GetFirmwareEnvironmentVariableW
+#else
+#define GetFirmwareEnvironmentVariable GetFirmwareEnvironmentVariableA
+#endif
+
+WINBASEAPI
 BOOL
 WINAPI
 SetFirmwareEnvironmentVariableA(
@@ -3138,6 +3195,7 @@ SetFirmwareEnvironmentVariableA(
   _In_reads_bytes_opt_(nSize) PVOID pValue,
   _In_ DWORD nSize);
 
+WINBASEAPI
 BOOL
 WINAPI
 SetFirmwareEnvironmentVariableW(
@@ -3146,7 +3204,13 @@ SetFirmwareEnvironmentVariableW(
   _In_reads_bytes_opt_(nSize) PVOID pValue,
   _In_ DWORD nSize);
 
+#ifdef UNICODE
+#define SetFirmwareEnvironmentVariable SetFirmwareEnvironmentVariableW
+#else
+#define SetFirmwareEnvironmentVariable SetFirmwareEnvironmentVariableA
 #endif
+
+#endif /* _WIN32_WINNT >= 0x0502 */
 
 UINT WINAPI SetHandleCount(UINT);
 BOOL WINAPI SetHandleInformation(HANDLE,DWORD,DWORD);
@@ -3797,6 +3861,8 @@ typedef PRTL_RUN_ONCE LPINIT_ONCE;
 #define INIT_ONCE_ASYNC RTL_RUN_ONCE_ASYNC
 #define INIT_ONCE_INIT_FAILED RTL_RUN_ONCE_INIT_FAILED
 
+#define INIT_ONCE_CTX_RESERVED_BITS RTL_RUN_ONCE_CTX_RESERVED_BITS
+
 typedef BOOL
 (WINAPI *PINIT_ONCE_FN)(
   _Inout_ PINIT_ONCE InitOnce,
@@ -3921,14 +3987,41 @@ CopyFile2(
 
 #endif /* _WIN32_WINNT >= 0x0601 */
 
+#if (_WIN32_WINNT >= _WIN32_WINNT_VISTA) || (DLL_EXPORT_VERSION >= _WIN32_WINNT_VISTA)
+
+WINBASEAPI
+VOID
+WINAPI
+InitOnceInitialize(
+    _Out_ PINIT_ONCE InitOnce);
+
+WINBASEAPI
+BOOL
+WINAPI
+InitOnceBeginInitialize(
+    _Inout_ LPINIT_ONCE lpInitOnce,
+    _In_ DWORD dwFlags,
+    _Out_ PBOOL fPending,
+    _Outptr_opt_result_maybenull_ LPVOID *lpContext);
+
+WINBASEAPI
+BOOL
+WINAPI
+InitOnceComplete(
+    _Inout_ LPINIT_ONCE lpInitOnce,
+    _In_ DWORD dwFlags,
+    _In_opt_ LPVOID lpContext);
+
+#endif /* (_WIN32_WINNT >= _WIN32_WINNT_VISTA) || (DLL_EXPORT_VERSION >= _WIN32_WINNT_VISTA) */
+
 WINBASEAPI
 BOOL
 WINAPI
 InitOnceExecuteOnce(
-  _Inout_ PINIT_ONCE InitOnce,
-  _In_ __callback PINIT_ONCE_FN InitFn,
-  _Inout_opt_ PVOID Parameter,
-  _Outptr_opt_result_maybenull_ LPVOID *Context);
+    _Inout_ PINIT_ONCE InitOnce,
+    _In_ __callback PINIT_ONCE_FN InitFn,
+    _Inout_opt_ PVOID Parameter,
+    _Outptr_opt_result_maybenull_ LPVOID *Context);
 
 
 #if defined(_SLIST_HEADER_) && !defined(_NTOS_) && !defined(_NTOSP_)

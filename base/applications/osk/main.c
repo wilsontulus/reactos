@@ -138,19 +138,14 @@ DWORD WINAPI OSK_WarningDlgThread(LPVOID lpParameter)
 VOID OSK_About(VOID)
 {
     WCHAR szAuthors[MAX_PATH];
-    HICON OSKIcon;
-
-    /* Load the icon */
-    OSKIcon = LoadImageW(Globals.hInstance, MAKEINTRESOURCEW(IDI_OSK), IMAGE_ICON, 0, 0, LR_DEFAULTSIZE);
 
     /* Load the strings into the "About" dialog */
     LoadStringW(Globals.hInstance, IDS_AUTHORS, szAuthors, _countof(szAuthors));
 
+    /* Load the icon */
     /* Finally, execute the "About" dialog by using the Shell routine */
-    ShellAboutW(Globals.hMainWnd, Globals.szTitle, szAuthors, OSKIcon);
-
-    /* Once done, destroy the icon */
-    DestroyIcon(OSKIcon);
+    ShellAboutW(Globals.hMainWnd, Globals.szTitle, szAuthors,
+                LoadImageW(Globals.hInstance, MAKEINTRESOURCEW(IDI_OSK), IMAGE_ICON, 0, 0, LR_DEFAULTSIZE | LR_SHARED));
 }
 
 /***********************************************************************
@@ -550,9 +545,6 @@ int OSK_Timer(void)
     hWndActiveWindow = GetForegroundWindow();
     if (hWndActiveWindow != NULL && hWndActiveWindow != Globals.hMainWnd)
     {
-        /* FIXME: To be deleted when ReactOS will support WS_EX_NOACTIVATE */
-        Globals.hActiveWnd = hWndActiveWindow;
-
         /* Grab the current keyboard layout from the foreground window */
         dwThread = GetWindowThreadProcessId(hWndActiveWindow, NULL);
         hKeyboardLayout = GetKeyboardLayout(dwThread);
@@ -628,19 +620,6 @@ BOOL OSK_Command(WPARAM wCommand, HWND hWndControl)
     BOOL bKeyUp;
     LONG WindowStyle;
     INT i;
-
-    /* FIXME: To be deleted when ReactOS will support WS_EX_NOACTIVATE */
-    if (Globals.hActiveWnd)
-    {
-        MSG msg;
-
-        SetForegroundWindow(Globals.hActiveWnd);
-        while (PeekMessageW(&msg, 0, 0, 0, PM_REMOVE))
-        {
-            TranslateMessage(&msg);
-            DispatchMessageW(&msg);
-        }
-    }
 
     /* KeyDown and/or KeyUp ? */
     WindowStyle = GetWindowLongW(hWndControl, GWL_STYLE);

@@ -9,12 +9,15 @@ extern void func_CFSFolder(void);
 extern void func_CheckEscapes(void);
 extern void func_CIDLData(void);
 extern void func_CMyComputer(void);
+extern void func_CommandLineToArgvW(void);
 extern void func_CShellDesktop(void);
 extern void func_CShellLink(void);
 extern void func_CUserNotification(void);
 extern void func_DragDrop(void);
 extern void func_ExtractIconEx(void);
 extern void func_FindExecutable(void);
+extern void func_GetDisplayNameOf(void);
+extern void func_Int64ToString(void);
 extern void func_IShellFolderViewCB(void);
 extern void func_menu(void);
 extern void func_OpenAs_RunDLL(void);
@@ -24,6 +27,7 @@ extern void func_SHChangeNotify(void);
 extern void func_SHCreateDataObject(void);
 extern void func_SHCreateFileDataObject(void);
 extern void func_SHCreateFileExtractIconW(void);
+extern void func_She(void);
 extern void func_ShellExecCmdLine(void);
 extern void func_ShellExecuteEx(void);
 extern void func_ShellExecuteW(void);
@@ -41,12 +45,15 @@ const struct test winetest_testlist[] =
     { "CheckEscapes", func_CheckEscapes },
     { "CIDLData", func_CIDLData },
     { "CMyComputer", func_CMyComputer },
+    { "CommandLineToArgvW", func_CommandLineToArgvW },
     { "CShellDesktop", func_CShellDesktop },
     { "CShellLink", func_CShellLink },
-    { "CUserNotification", func_CUserNotification },
+    //{ "CUserNotification", func_CUserNotification }, // Test is broken on Win 2003
     { "DragDrop", func_DragDrop },
     { "ExtractIconEx", func_ExtractIconEx },
     { "FindExecutable", func_FindExecutable },
+    { "GetDisplayNameOf", func_GetDisplayNameOf },
+    { "Int64ToString", func_Int64ToString },
     { "IShellFolderViewCB", func_IShellFolderViewCB },
     { "menu", func_menu },
     { "OpenAs_RunDLL", func_OpenAs_RunDLL },
@@ -56,6 +63,7 @@ const struct test winetest_testlist[] =
     { "SHCreateDataObject", func_SHCreateDataObject },
     { "SHCreateFileDataObject", func_SHCreateFileDataObject },
     { "SHCreateFileExtractIconW", func_SHCreateFileExtractIconW },
+    { "She", func_She },
     { "ShellExecCmdLine", func_ShellExecCmdLine },
     { "ShellExecuteEx", func_ShellExecuteEx },
     { "ShellExecuteW", func_ShellExecuteW },

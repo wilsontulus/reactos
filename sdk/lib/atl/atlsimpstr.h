@@ -6,6 +6,12 @@
 #include <atlcore.h>
 #include <atlexcept.h>
 
+#ifdef __RATL__
+    #ifndef _In_count_
+        #define _In_count_(nLength)
+    #endif
+#endif
+
 namespace ATL
 {
 struct CStringData;
@@ -358,6 +364,10 @@ public:
         return GetData()->nDataLength;
     }
 
+    PXSTR GetString() throw()
+    {
+        return m_pszData;
+    }
     PCXSTR GetString() const throw()
     {
         return m_pszData;

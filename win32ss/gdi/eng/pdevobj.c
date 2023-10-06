@@ -3,7 +3,8 @@
  * PROJECT:          ReactOS kernel
  * PURPOSE:          Support for physical devices
  * FILE:             win32ss/gdi/eng/pdevobj.c
- * PROGRAMER:        Timo Kreuzer (timo.kreuzer@reactos.org)
+ * PROGRAMERS:       Timo Kreuzer (timo.kreuzer@reactos.org)
+ *                   Oleg Dubinskiy (oleg.dubinskij30@gmail.com)
  */
 
 #include <win32k.h>
@@ -20,6 +21,9 @@ MultiEnableDriver(
     _In_ ULONG iEngineVersion,
     _In_ ULONG cj,
     _Inout_bytecount_(cj) PDRVENABLEDATA pded);
+
+extern DRVFN gPanDispDrvFn[];
+extern ULONG gPanDispDrvCount;
 
 CODE_SEG("INIT")
 NTSTATUS
@@ -176,7 +180,7 @@ PDEVOBJ_bEnablePDEV(
     ULONG i;
 
     /* Get the DrvEnablePDEV function */
-    pfnEnablePDEV = ppdev->pldev->pfn.EnablePDEV;
+    pfnEnablePDEV = ppdev->pfn.EnablePDEV;
 
     /* Call the drivers DrvEnablePDEV function */
     TRACE("DrvEnablePDEV(pdevmode %p (%dx%dx%d %d Hz) hdev %p (%S))\n",
@@ -243,7 +247,7 @@ PDEVOBJ_vCompletePDEV(
 {
     /* Call the drivers DrvCompletePDEV function */
     TRACE("DrvCompletePDEV(dhpdev %p hdev %p)\n", ppdev->dhpdev, ppdev);
-    ppdev->pldev->pfn.CompletePDEV(ppdev->dhpdev, (HDEV)ppdev);
+    ppdev->pfn.CompletePDEV(ppdev->dhpdev, (HDEV)ppdev);
 }
 
 static
@@ -298,7 +302,7 @@ PDEVOBJ_vFilterDriverHooks(
     if (dwAccelerationLevel >= 5)
     {
         /* Disable all display accelerations */
-        UNIMPLEMENTED;
+        /* (nothing to do. Already handled in PDEVOBJ_Create) */
     }
 }
 
@@ -314,7 +318,7 @@ PDEVOBJ_pSurface(
     {
         /* Call the drivers DrvEnableSurface */
         TRACE("DrvEnableSurface(dhpdev %p)\n", ppdev->dhpdev);
-        hsurf = ppdev->pldev->pfn.EnableSurface(ppdev->dhpdev);
+        hsurf = ppdev->pfn.EnableSurface(ppdev->dhpdev);
         TRACE("DrvEnableSurface(dhpdev %p) => hsurf %p\n", ppdev->dhpdev, hsurf);
         if (hsurf== NULL)
         {
@@ -331,6 +335,55 @@ PDEVOBJ_pSurface(
     GDIOBJ_vReferenceObjectByPointer(&ppdev->pSurface->BaseObject);
 
     return ppdev->pSurface;
+}
+
+BOOL
+PDEVOBJ_bEnableDirectDraw(
+    _Inout_ PPDEVOBJ ppdev)
+{
+    PGD_DXDDENABLEDIRECTDRAW pfnDdEnableDirectDraw = (PGD_DXDDENABLEDIRECTDRAW)gpDxFuncs[DXG_INDEX_DxDdEnableDirectDraw].pfn;
+    BOOL Success;
+
+    /* Enable DirectDraw */
+    TRACE("DxDdEnableDirectDraw(ppdev %p)\n", ppdev);
+    Success = pfnDdEnableDirectDraw((HDEV)ppdev, TRUE);
+    TRACE("DxDdEnableDirectDraw(ppdev %p) => %d\n", ppdev, Success);
+
+    return Success;
+}
+
+VOID
+PDEVOBJ_vResumeDirectDraw(
+    _Inout_ PPDEVOBJ ppdev)
+{
+    PGD_DXDDRESUMEDIRECTDRAW pfnDdResumeDirectDraw = (PGD_DXDDRESUMEDIRECTDRAW)gpDxFuncs[DXG_INDEX_DxDdResumeDirectDraw].pfn;
+
+    /* Resume DirectDraw after mode change */
+    TRACE("DxDdResumeDirectDraw(ppdev %p)\n", ppdev);
+    pfnDdResumeDirectDraw((HDEV)ppdev, 0);
+}
+
+VOID
+PDEVOBJ_vSuspendDirectDraw(
+    _Inout_ PPDEVOBJ ppdev)
+{
+    PGD_DXDDSUSPENDDIRECTDRAW pfnDdSuspendDirectDraw = (PGD_DXDDSUSPENDDIRECTDRAW)gpDxFuncs[DXG_INDEX_DxDdSuspendDirectDraw].pfn;
+
+    /* Suspend DirectDraw for mode change */
+    TRACE("DxDdSuspendDirectDraw(ppdev %p)\n", ppdev);
+    pfnDdSuspendDirectDraw((HDEV)ppdev, 0);
+}
+
+VOID
+PDEVOBJ_vSwitchDirectDraw(
+    _Inout_ PPDEVOBJ ppdev,
+    _Inout_ PPDEVOBJ ppdev2)
+{
+    PGD_DXDDDYNAMICMODECHANGE pfnDdDynamicModeChange = (PGD_DXDDDYNAMICMODECHANGE)gpDxFuncs[DXG_INDEX_DxDdDynamicModeChange].pfn;
+
+    /* Switch DirectDraw instances between the PDEVs */
+    TRACE("DxDdDynamicModeChange(ppdev %p, ppdev2 %p)\n", ppdev, ppdev2);
+    pfnDdDynamicModeChange((HDEV)ppdev, (HDEV)ppdev2, 0);
 }
 
 VOID
@@ -361,6 +414,8 @@ PDEVOBJ_bDisableDisplay(
 
     if (ppdev->flFlags & PDEV_DISABLED)
         return TRUE;
+
+    PDEVOBJ_vSuspendDirectDraw(ppdev);
 
     TRACE("DrvAssertMode(dhpdev %p, FALSE)\n", ppdev->dhpdev);
     assertVal = ppdev->pfn.AssertMode(ppdev->dhpdev, FALSE);
@@ -502,6 +557,27 @@ PDEVOBJ_Create(
     ppdev->pldev = pldev;
     ppdev->dwAccelerationLevel = dwAccelerationLevel;
 
+    /* Copy the function table */
+    if ((ldevtype == LDEV_DEVICE_DISPLAY && dwAccelerationLevel >= 5) ||
+        pdm->dmFields & (DM_PANNINGWIDTH | DM_PANNINGHEIGHT))
+    {
+        ULONG i;
+
+        /* Initialize missing fields */
+        if (!(pdm->dmFields & DM_PANNINGWIDTH))
+            pdm->dmPanningWidth = pdm->dmPelsWidth;
+        if (!(pdm->dmFields & DM_PANNINGHEIGHT))
+            pdm->dmPanningHeight = pdm->dmPelsHeight;
+
+        /* Replace vtable by panning vtable */
+        for (i = 0; i < gPanDispDrvCount; i++)
+            ppdev->apfn[gPanDispDrvFn[i].iFunc] = gPanDispDrvFn[i].pfn;
+    }
+    else
+    {
+        ppdev->pfn = ppdev->pldev->pfn;
+    }
+
     /* Call the driver to enable the PDEV */
     if (!PDEVOBJ_bEnablePDEV(ppdev, pdm, NULL))
     {
@@ -511,9 +587,6 @@ PDEVOBJ_Create(
         return NULL;
     }
 
-    /* Copy the function table */
-    ppdev->pfn = ppdev->pldev->pfn;
-
     /* Tell the driver that the PDEV is ready */
     PDEVOBJ_vCompletePDEV(ppdev);
 
@@ -522,6 +595,15 @@ PDEVOBJ_Create(
     if (!pSurface)
     {
         ERR("Failed to create surface\n");
+        PDEVOBJ_vRelease(ppdev);
+        EngUnloadImage(pldev);
+        return NULL;
+    }
+
+    /* Enable DirectDraw */
+    if (!PDEVOBJ_bEnableDirectDraw(ppdev))
+    {
+        ERR("Failed to enable DirectDraw\n");
         PDEVOBJ_vRelease(ppdev);
         EngUnloadImage(pldev);
         return NULL;
@@ -610,6 +692,9 @@ PDEVOBJ_bDynamicModeChange(
     ppdev->pfn.CompletePDEV(ppdev->dhpdev, (HDEV)ppdev);
     ppdev2->pfn.CompletePDEV(ppdev2->dhpdev, (HDEV)ppdev2);
 
+    /* Switch DirectDraw mode */
+    PDEVOBJ_vSwitchDirectDraw(ppdev, ppdev2);
+
     return TRUE;
 }
 
@@ -639,6 +724,8 @@ PDEVOBJ_bSwitchMode(
     if (!PDEVOBJ_bDisableDisplay(ppdev))
     {
         DPRINT1("PDEVOBJ_bDisableDisplay() failed\n");
+        /* Resume DirectDraw in case of failure */
+        PDEVOBJ_vResumeDirectDraw(ppdev);
         goto leave;
     }
 
@@ -659,11 +746,11 @@ PDEVOBJ_bSwitchMode(
         goto leave2;
     }
 
-    /* 4. Get DirectDraw information */
-    /* 5. Enable DirectDraw Not traced */
-    /* 6. Copy old PDEV state to new PDEV instance */
+    /* 4. Temporarily suspend DirectDraw for mode change */
+    PDEVOBJ_vSuspendDirectDraw(ppdev);
+    PDEVOBJ_vSuspendDirectDraw(ppdevTmp);
 
-    /* 7. Switch the PDEVs */
+    /* 5. Switch the PDEVs */
     if (!PDEVOBJ_bDynamicModeChange(ppdev, ppdevTmp))
     {
         DPRINT1("PDEVOBJ_bDynamicModeChange() failed\n");
@@ -671,9 +758,16 @@ PDEVOBJ_bSwitchMode(
         goto leave2;
     }
 
-    /* 8. Disable DirectDraw */
+    /* 6. Resume DirectDraw */
+    PDEVOBJ_vResumeDirectDraw(ppdev);
+    PDEVOBJ_vResumeDirectDraw(ppdevTmp);
 
+    /* Release temp PDEV */
     PDEVOBJ_vRelease(ppdevTmp);
+
+    /* Re-initialize DirectDraw data */
+    ppdev->pEDDgpl->hDev = (HDEV)ppdev;
+    ppdev->pEDDgpl->dhpdev = ppdev->dhpdev;
 
     /* Update primary display capabilities */
     if (ppdev == gpmdev->ppdevGlobal)

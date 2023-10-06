@@ -3,7 +3,7 @@
  * COPYRIGHT:       GPL - See COPYING in the top level directory
  * FILE:            ntoskrnl/io/pnpmgr/plugplay.c
  * PURPOSE:         Plug-and-play interface routines
- * PROGRAMMERS:     Eric Kohl <eric.kohl@t-online.de>
+ * PROGRAMMERS:     Eric Kohl <eric.kohl@reactos.org>
  */
 
 /* INCLUDES *****************************************************************/
@@ -18,6 +18,12 @@ typedef struct _PNP_EVENT_ENTRY
     PLUGPLAY_EVENT_BLOCK Event;
 } PNP_EVENT_ENTRY, *PPNP_EVENT_ENTRY;
 
+typedef struct _IOP_FIND_DEVICE_INSTANCE_TRAVERSE_CONTEXT
+{
+    PCUNICODE_STRING InstancePath;
+    PDEVICE_OBJECT DeviceObject;
+} IOP_FIND_DEVICE_INSTANCE_TRAVERSE_CONTEXT, *PIOP_FIND_DEVICE_INSTANCE_TRAVERSE_CONTEXT;
+
 
 /* GLOBALS *******************************************************************/
 
@@ -25,6 +31,9 @@ static LIST_ENTRY IopPnpEventQueueHead;
 static KEVENT IopPnpNotifyEvent;
 
 /* FUNCTIONS *****************************************************************/
+
+NTSTATUS
+IopSetDeviceInstanceData(HANDLE InstanceKey, PDEVICE_NODE DeviceNode);
 
 CODE_SEG("INIT")
 NTSTATUS
@@ -88,39 +97,32 @@ IopQueueTargetDeviceEvent(const GUID *Guid,
     return STATUS_SUCCESS;
 }
 
-
-static PDEVICE_OBJECT
-IopTraverseDeviceNode(PDEVICE_NODE Node, PUNICODE_STRING DeviceInstance)
+NTSTATUS
+IopFindDeviceInstanceTraverse(
+    _In_ PDEVICE_NODE DeviceNode,
+    _Inout_ PVOID Context)
 {
-    PDEVICE_OBJECT DeviceObject;
-    PDEVICE_NODE ChildNode;
+    PIOP_FIND_DEVICE_INSTANCE_TRAVERSE_CONTEXT DeviceInstanceContext = Context;
 
-    if (RtlEqualUnicodeString(&Node->InstancePath,
-                              DeviceInstance, TRUE))
+    if (RtlEqualUnicodeString(&DeviceNode->InstancePath,
+                              DeviceInstanceContext->InstancePath, TRUE))
     {
-        ObReferenceObject(Node->PhysicalDeviceObject);
-        return Node->PhysicalDeviceObject;
+        ObReferenceObject(DeviceNode->PhysicalDeviceObject);
+        DeviceInstanceContext->DeviceObject = DeviceNode->PhysicalDeviceObject;
+
+        /* Stop enumeration */
+        return STATUS_UNSUCCESSFUL;
     }
 
-    /* Traversal of all children nodes */
-    for (ChildNode = Node->Child;
-         ChildNode != NULL;
-         ChildNode = ChildNode->Sibling)
-    {
-        DeviceObject = IopTraverseDeviceNode(ChildNode, DeviceInstance);
-        if (DeviceObject != NULL)
-        {
-            return DeviceObject;
-        }
-    }
-
-    return NULL;
+    return STATUS_SUCCESS;
 }
-
 
 PDEVICE_OBJECT
 IopGetDeviceObjectFromDeviceInstance(PUNICODE_STRING DeviceInstance)
 {
+    DEVICETREE_TRAVERSE_CONTEXT Context;
+    IOP_FIND_DEVICE_INSTANCE_TRAVERSE_CONTEXT DeviceInstanceContext;
+
     if (IopRootDeviceNode == NULL)
         return NULL;
 
@@ -136,7 +138,17 @@ IopGetDeviceObjectFromDeviceInstance(PUNICODE_STRING DeviceInstance)
             return NULL;
     }
 
-    return IopTraverseDeviceNode(IopRootDeviceNode, DeviceInstance);
+    /* Traverse the device tree to find the matching device node */
+    DeviceInstanceContext.InstancePath = DeviceInstance;
+    DeviceInstanceContext.DeviceObject = NULL;
+    IopInitDeviceTreeTraverseContext(&Context,
+                                     IopRootDeviceNode,
+                                     IopFindDeviceInstanceTraverse,
+                                     &DeviceInstanceContext);
+    (void)IopTraverseDeviceTree(&Context);
+
+    /* In case of error or instance not found, this will still be NULL from above. */
+    return DeviceInstanceContext.DeviceObject;
 }
 
 static NTSTATUS
@@ -189,15 +201,16 @@ IopCaptureUnicodeString(PUNICODE_STRING DstName, PUNICODE_STRING SrcName)
 
 static
 NTSTATUS
-IopInitializeDevice(
+PiControlInitializeDevice(
     _In_ PPLUGPLAY_CONTROL_DEVICE_CONTROL_DATA ControlData)
 {
     UNICODE_STRING DeviceInstance;
     PDEVICE_OBJECT DeviceObject;
     PDEVICE_NODE DeviceNode;
     NTSTATUS Status = STATUS_SUCCESS;
+    HANDLE InstanceKey;
 
-    DPRINT("IopInitializeDevice(%p)\n", ControlData);
+    DPRINT("PiControlInitializeDevice(%p)\n", ControlData);
 
     Status = IopCaptureUnicodeString(&DeviceInstance, &ControlData->DeviceInstance);
     if (!NT_SUCCESS(Status))
@@ -209,25 +222,18 @@ IopInitializeDevice(
 
     /* Leave, if the device already exists */
     DeviceObject = IopGetDeviceObjectFromDeviceInstance(&DeviceInstance);
-    if (DeviceInstance.Buffer != NULL)
+    if (DeviceObject != NULL)
     {
         DPRINT1("Device %wZ already exists!\n", &DeviceInstance);
+        ObDereferenceObject(DeviceObject);
         Status = STATUS_SUCCESS;
         goto done;
     }
 
-    ObDereferenceObject(DeviceObject);
-
     DPRINT("Device %wZ does not exist!\n", &DeviceInstance);
 
     /* Create a device node for the device instance */
-    Status = IoCreateDevice(IopRootDriverObject,
-                            0,
-                            NULL,
-                            FILE_DEVICE_CONTROLLER,
-                            FILE_AUTOGENERATED_DEVICE_NAME,
-                            FALSE,
-                            &DeviceObject);
+    Status = PnpRootCreateDeviceObject(&DeviceObject);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("IoCreateDevice() failed (Status 0x%08lx)\n", Status);
@@ -244,8 +250,12 @@ IopInitializeDevice(
         goto done;
     }
 
-    /* Set the device instance of the device node */
-    Status = RtlDuplicateUnicodeString(0, &DeviceInstance, &DeviceNode->InstancePath);
+    // Set the device instance of the device node
+    // NOTE: a NULL-terminated string is required for PnpRootRegisterDevice
+    Status = RtlDuplicateUnicodeString(
+                RTL_DUPLICATE_UNICODE_STRING_NULL_TERMINATE,
+                &DeviceInstance,
+                &DeviceNode->InstancePath);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("RtlDuplicateUnicodeString() failed (Status 0x%08lx)\n", Status);
@@ -254,9 +264,31 @@ IopInitializeDevice(
         goto done;
     }
 
+    DeviceObject->Flags |= DO_BUS_ENUMERATED_DEVICE;
+    DeviceNode->Flags |= DNF_MADEUP | DNF_IDS_QUERIED | DNF_ENUMERATED;
+    PiSetDevNodeState(DeviceNode, DeviceNodeInitialized);
+
+    Status = IopCreateDeviceKeyPath(&DeviceInstance, REG_OPTION_NON_VOLATILE, &InstanceKey);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to create the instance key! (Status %lx)\n", Status);
+        IopFreeDeviceNode(DeviceNode);
+        IoDeleteDevice(DeviceObject);
+        goto done;
+    }
+
+    /* Write the resource information to the registry */
+    IopSetDeviceInstanceData(InstanceKey, DeviceNode);
+
+    // Finish the root device registration
+    PnpRootRegisterDevice(DeviceObject);
+
     /* Insert as a root enumerated device node */
     PiInsertDevNode(DeviceNode, IopRootDeviceNode);
 
+    IopQueueTargetDeviceEvent(&GUID_DEVICE_ENUMERATED, &DeviceInstance);
+
+    ZwClose(InstanceKey);
 done:
     ExFreePool(DeviceInstance.Buffer);
 
@@ -1147,6 +1179,39 @@ PiControlSyncDeviceAction(
     return Status;
 }
 
+static
+NTSTATUS
+PiControlQueryRemoveDevice(
+    _In_ PPLUGPLAY_CONTROL_QUERY_REMOVE_DATA ControlData)
+{
+    PDEVICE_OBJECT DeviceObject;
+    NTSTATUS Status;
+    UNICODE_STRING DeviceInstance;
+
+    Status = IopCaptureUnicodeString(&DeviceInstance, &ControlData->DeviceInstance);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
+
+    DeviceObject = IopGetDeviceObjectFromDeviceInstance(&DeviceInstance);
+    if (DeviceInstance.Buffer != NULL)
+    {
+        ExFreePool(DeviceInstance.Buffer);
+    }
+    if (DeviceObject == NULL)
+    {
+        return STATUS_NO_SUCH_DEVICE;
+    }
+
+    UNIMPLEMENTED;
+    Status = STATUS_NOT_IMPLEMENTED;
+
+    ObDereferenceObject(DeviceObject);
+
+    return Status;
+}
+
 /* PUBLIC FUNCTIONS **********************************************************/
 
 /*
@@ -1390,7 +1455,7 @@ NtPlugPlayControl(IN PLUGPLAY_CONTROL_CLASS PlugPlayControlClass,
         case PlugPlayControlInitializeDevice:
             if (!Buffer || BufferLength < sizeof(PLUGPLAY_CONTROL_DEVICE_CONTROL_DATA))
                 return STATUS_INVALID_PARAMETER;
-            return IopInitializeDevice((PPLUGPLAY_CONTROL_DEVICE_CONTROL_DATA)Buffer);
+            return PiControlInitializeDevice((PPLUGPLAY_CONTROL_DEVICE_CONTROL_DATA)Buffer);
 
         case PlugPlayControlStartDevice:
         case PlugPlayControlResetDevice:
@@ -1400,7 +1465,10 @@ NtPlugPlayControl(IN PLUGPLAY_CONTROL_CLASS PlugPlayControlClass,
                                              PlugPlayControlClass);
 
 //        case PlugPlayControlUnlockDevice:
-//        case PlugPlayControlQueryAndRemoveDevice:
+        case PlugPlayControlQueryAndRemoveDevice:
+              if (!Buffer || BufferLength < sizeof(PLUGPLAY_CONTROL_QUERY_REMOVE_DATA))
+                  return STATUS_INVALID_PARAMETER;
+              return PiControlQueryRemoveDevice((PPLUGPLAY_CONTROL_QUERY_REMOVE_DATA)Buffer);
 
         case PlugPlayControlUserResponse:
             if (!Buffer || BufferLength < sizeof(PLUGPLAY_CONTROL_USER_RESPONSE_DATA))

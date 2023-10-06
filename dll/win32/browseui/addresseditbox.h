@@ -48,6 +48,10 @@ private:
     void FillOneLevel(int index, int levelIndent, int indent);
     LPITEMIDLIST GetItemData(int index);
     HRESULT STDMETHODCALLTYPE ShowFileNotFoundError(HRESULT hRet);
+    HRESULT GetAbsolutePidl(PIDLIST_ABSOLUTE *pAbsolutePIDL);
+    BOOL ExecuteCommandLine();
+    BOOL GetComboBoxText(CComHeapPtr<WCHAR>& pszText);
+    HRESULT RefreshAddress();
 public:
     // *** IShellService methods ***
     virtual HRESULT STDMETHODCALLTYPE SetOwner(IUnknown *);
@@ -87,6 +91,7 @@ public:
     virtual HRESULT STDMETHODCALLTYPE GetSizeMax(ULARGE_INTEGER *pcbSize);
 
     // message handlers
+    LRESULT OnSettingChange(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &bHandled);
 
     DECLARE_REGISTRY_RESOURCEID(IDR_ADDRESSEDITBOX)
     DECLARE_NOT_AGGREGATABLE(CAddressEditBox)
@@ -94,6 +99,7 @@ public:
     DECLARE_PROTECT_FINAL_CONSTRUCT()
 
     BEGIN_MSG_MAP(CAddressEditBox)
+        MESSAGE_HANDLER(WM_SETTINGCHANGE, OnSettingChange)
     END_MSG_MAP()
 
     BEGIN_COM_MAP(CAddressEditBox)

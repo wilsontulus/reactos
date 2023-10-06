@@ -104,7 +104,7 @@ PrintStackTrace(IN PEXCEPTION_POINTERS ExceptionInfo)
     if (ExceptionRecord->ExceptionCode == STATUS_ACCESS_VIOLATION &&
         ExceptionRecord->NumberParameters == 2)
     {
-        DbgPrint("Faulting Address: %8x\n", ExceptionRecord->ExceptionInformation[1]);
+        DbgPrint("Faulting Address: %p\n", (PVOID)ExceptionRecord->ExceptionInformation[1]);
     }
 
     /* Trace the wine special error and show the modulename and functionname */
@@ -697,14 +697,16 @@ Quit:
  */
 VOID
 WINAPI
-RaiseException(IN DWORD dwExceptionCode,
-               IN DWORD dwExceptionFlags,
-               IN DWORD nNumberOfArguments,
-               IN CONST ULONG_PTR *lpArguments OPTIONAL)
+RaiseException(
+    _In_ DWORD dwExceptionCode,
+    _In_ DWORD dwExceptionFlags,
+    _In_ DWORD nNumberOfArguments,
+    _In_opt_ const ULONG_PTR *lpArguments)
 {
     EXCEPTION_RECORD ExceptionRecord;
 
     /* Setup the exception record */
+    RtlZeroMemory(&ExceptionRecord, sizeof(ExceptionRecord));
     ExceptionRecord.ExceptionCode = dwExceptionCode;
     ExceptionRecord.ExceptionRecord = NULL;
     ExceptionRecord.ExceptionAddress = (PVOID)RaiseException;
@@ -726,7 +728,7 @@ RaiseException(IN DWORD dwExceptionCode,
         ExceptionRecord.NumberParameters = nNumberOfArguments;
         RtlCopyMemory(ExceptionRecord.ExceptionInformation,
                       lpArguments,
-                      nNumberOfArguments * sizeof(ULONG));
+                      nNumberOfArguments * sizeof(ULONG_PTR));
     }
 
     /* Better handling of Delphi Exceptions... a ReactOS Hack */

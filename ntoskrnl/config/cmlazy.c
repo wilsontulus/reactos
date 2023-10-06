@@ -1,9 +1,8 @@
 /*
- * PROJECT:         ReactOS Kernel
- * LICENSE:         GPL - See COPYING in the top level directory
- * FILE:            ntoskrnl/config/cmlazy.c
- * PURPOSE:         Configuration Manager - Internal Registry APIs
- * PROGRAMMERS:     Alex Ionescu (alex.ionescu@reactos.org)
+ * PROJECT:     ReactOS Kernel
+ * LICENSE:     GPL - See COPYING in the top level directory
+ * PURPOSE:     Configuration Manager - Internal Registry APIs
+ * PROGRAMMERS: Alex Ionescu <alex.ionescu@reactos.org>
  */
 
 /* INCLUDES *******************************************************************/

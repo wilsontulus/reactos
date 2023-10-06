@@ -40,9 +40,6 @@
 #define IDC_REGEDIT_FRAME             110
 #define IDR_REGEDIT_MENU              130
 #define IDD_EXPORTRANGE               131
-#define IDI_OPEN_FILE                 132
-#define IDI_CLOSED_FILE               133
-#define IDI_ROOT                      134
 #define IDI_STRING                    135
 #define IDI_BIN                       136
 #define IDR_POPUP_MENUS               137
@@ -160,6 +157,7 @@
 #define ID_TREE_SUGGESTION_MAX       32887
 #define ID_TREE_EXPORT               32888
 #define ID_TREE_PERMISSIONS          32889
+#define ID_ADDRESS_FOCUS             32890
 
 #define IDS_FLT_REGFILE      31000
 #define IDS_FLT_REGFILES     31001
@@ -170,6 +168,8 @@
 #define IDS_FLT_REGEDIT4_FLT 31006
 #define IDS_FLT_ALLFILES     31007
 #define IDS_FLT_ALLFILES_FLT 31008
+#define IDS_FLT_TXTFILES     31009
+#define IDS_FLT_TXTFILES_FLT 31010
 
 #define IDS_ACCESS_FULLCONTROL      31100
 #define IDS_ACCESS_READ             31101
@@ -246,6 +246,17 @@
 #define IDS_BUS_PNPBUS            31546
 #define IDS_BUS_UNKNOWNTYPE       31547
 
+#define IDS_FIELD_KEY_NAME      31600
+#define IDS_FIELD_CLASS_NAME    31601
+#define IDS_NO_CLASS_NAME       31602
+#define IDS_NULL_TIMESTAMP      31603
+#define IDS_FIELD_NAME          31604
+#define IDS_FIELD_TYPE          31605
+#define IDS_FIELD_DATA          31606
+#define IDS_FIELD_LASTWRITE     31607
+#define IDS_UNKNOWN             31608
+#define IDS_VALUE_INDEX         31609
+
 #define IDD_EDIT_STRING 2000
 #define IDC_VALUE_NAME  2001
 #define IDC_VALUE_DATA  2002
@@ -299,3 +310,29 @@
 #define ID_ACCEL 3000
 
 #define IDC_STATIC -1
+
+/* Command-line strings */
+#define STRING_USAGE                    3001
+#define STRING_INVALID_SWITCH           3002
+#define STRING_HELP                     3003
+#define STRING_NO_FILENAME              3004
+#define STRING_NO_REG_KEY               3005
+#define STRING_FILE_NOT_FOUND           3006
+#define STRING_CANNOT_OPEN_FILE         3007
+#define STRING_UNHANDLED_ACTION         3008
+#define STRING_OUT_OF_MEMORY            3009
+#define STRING_INVALID_HEX              3010
+#define STRING_CSV_HEX_ERROR            3011
+#define STRING_ESCAPE_SEQUENCE          3012
+#define STRING_UNKNOWN_DATA_FORMAT      3013
+#define STRING_UNEXPECTED_EOL           3014
+#define STRING_UNRECOGNIZED_LINE        3015
+#define STRING_SETVALUE_FAILED          3016
+#define STRING_OPEN_KEY_FAILED          3017
+#define STRING_UNSUPPORTED_TYPE         3018
+#define STRING_EXPORT_AS_BINARY         3019
+#define STRING_INVALID_SYSTEM_KEY       3020
+#define STRING_REG_KEY_NOT_FOUND        3021
+#define STRING_DELETE_FAILED            3022
+#define STRING_UNKNOWN_TYPE             3023
+#define STRING_INVALID_LINE_SYNTAX      3024

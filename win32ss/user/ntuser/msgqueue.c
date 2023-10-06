@@ -1263,7 +1263,7 @@ co_MsqSendMessage(PTHREADINFO ptirec,
                Entry = Entry->Flink;
             }
 
-            ERR("MsqSendMessage timed out 2 Status %lx\n", WaitStatus);
+            WARN("MsqSendMessage timed out 2 Status %lx\n", WaitStatus);
             break;
          }
          // Receiving thread passed on and left us hanging with issues still pending.
@@ -1344,18 +1344,25 @@ MsqPostMessage(PTHREADINFO pti,
    PUSER_MESSAGE Message;
    PUSER_MESSAGE_QUEUE MessageQueue;
 
-   if ( pti->TIF_flags & TIF_INCLEANUP || pti->MessageQueue->QF_flags & QF_INDESTROY )
+   MessageQueue = pti->MessageQueue;
+
+   if ((pti->TIF_flags & TIF_INCLEANUP) || (MessageQueue->QF_flags & QF_INDESTROY))
    {
       ERR("Post Msg; Thread or Q is Dead!\n");
       return;
    }
 
-   if(!(Message = MsqCreateMessage(Msg)))
-   {
+   Message = MsqCreateMessage(Msg);
+   if (!Message)
       return;
-   }
 
-   MessageQueue = pti->MessageQueue;
+   if (Msg->message == WM_HOTKEY)
+      MessageBits |= QS_HOTKEY;
+
+   Message->dwQEvent = dwQEvent;
+   Message->ExtraInfo = ExtraInfo;
+   Message->QS_Flags = MessageBits;
+   Message->pti = pti;
 
    if (!HardwareMessage)
    {
@@ -1366,13 +1373,8 @@ MsqPostMessage(PTHREADINFO pti,
        InsertTailList(&MessageQueue->HardwareMessagesListHead, &Message->ListEntry);
    }
 
-   if (Msg->message == WM_HOTKEY) MessageBits |= QS_HOTKEY; // Justin Case, just set it.
-   Message->dwQEvent = dwQEvent;
-   Message->ExtraInfo = ExtraInfo;
-   Message->QS_Flags = MessageBits;
-   Message->pti = pti;
    MsqWakeQueue(pti, MessageBits, TRUE);
-   TRACE("Post Message %d\n",PostMsgCount);
+   TRACE("Post Message %d\n", PostMsgCount);
 }
 
 VOID FASTCALL
@@ -1533,7 +1535,7 @@ BOOL co_IntProcessMouseMessage(MSG* msg, BOOL* RemoveMessages, BOOL* NotForUs, L
     }
     else
     {
-       ERR("Not the same cursor!\n");
+       WARN("Not the same cursor!\n");
     }
 
     msg->hwnd = UserHMGetHandle(pwndMsg);
@@ -1562,7 +1564,7 @@ BOOL co_IntProcessMouseMessage(MSG* msg, BOOL* RemoveMessages, BOOL* NotForUs, L
     }
     msg->lParam = MAKELONG( pt.x, pt.y );
 
-    /* translate double clicks */
+    /* translate double-clicks */
 
     if ((msg->message == WM_LBUTTONDOWN) ||
         (msg->message == WM_RBUTTONDOWN) ||
@@ -1571,7 +1573,7 @@ BOOL co_IntProcessMouseMessage(MSG* msg, BOOL* RemoveMessages, BOOL* NotForUs, L
     {
         BOOL update = *RemoveMessages;
 
-        /* translate double clicks -
+        /* translate double-clicks -
          * note that ...MOUSEMOVEs can slip in between
          * ...BUTTONDOWN and ...BUTTONDBLCLK messages */
 
@@ -1590,7 +1592,7 @@ BOOL co_IntProcessMouseMessage(MSG* msg, BOOL* RemoveMessages, BOOL* NotForUs, L
                message += (WM_LBUTTONDBLCLK - WM_LBUTTONDOWN);
                if (update)
                {
-                   MessageQueue->msgDblClk.message = 0;  /* clear the double click conditions */
+                   MessageQueue->msgDblClk.message = 0;  /* clear the double-click conditions */
                    update = FALSE;
                }
            }
@@ -1602,7 +1604,7 @@ BOOL co_IntProcessMouseMessage(MSG* msg, BOOL* RemoveMessages, BOOL* NotForUs, L
             return FALSE;
         }
 
-        /* update static double click conditions */
+        /* update static double-click conditions */
         if (update) MessageQueue->msgDblClk = *msg;
     }
     else

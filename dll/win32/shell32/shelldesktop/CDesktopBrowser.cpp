@@ -321,8 +321,8 @@ HRESULT STDMETHODCALLTYPE CDesktopBrowser::QueryActiveShellView(IShellView **pps
     if (ppshv == NULL)
         return E_POINTER;
     *ppshv = m_ShellView;
-    if (m_ShellView != NULL)
-        m_ShellView->AddRef();
+    if (*ppshv != NULL)
+        (*ppshv)->AddRef();
 
     return S_OK;
 }
@@ -519,4 +519,34 @@ BOOL WINAPI SHDesktopMessageLoop(HANDLE hDesktop)
     }
 
     return TRUE;
+}
+
+/*************************************************************************
+ *  SHIsTempDisplayMode [SHELL32.724]
+ *
+ * Is the current display settings temporary?
+ */
+EXTERN_C BOOL WINAPI SHIsTempDisplayMode(VOID)
+{
+    TRACE("\n");
+
+    if (GetSystemMetrics(SM_REMOTESESSION) || GetSystemMetrics(SM_REMOTECONTROL))
+        return FALSE;
+
+    DEVMODEW DevMode;
+    ZeroMemory(&DevMode, sizeof(DevMode));
+    DevMode.dmSize = sizeof(DevMode);
+
+    if (!EnumDisplaySettingsW(NULL, ENUM_REGISTRY_SETTINGS, &DevMode))
+        return FALSE;
+
+    if (!DevMode.dmPelsWidth || !DevMode.dmPelsHeight)
+        return FALSE;
+
+    HDC hDC = GetDC(NULL);
+    DWORD cxWidth = GetDeviceCaps(hDC, HORZRES);
+    DWORD cyHeight = GetDeviceCaps(hDC, VERTRES);
+    ReleaseDC(NULL, hDC);
+
+    return (cxWidth != DevMode.dmPelsWidth || cyHeight != DevMode.dmPelsHeight);
 }

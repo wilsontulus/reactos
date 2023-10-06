@@ -3,7 +3,7 @@
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
  * PURPOSE:     FAT filesystem driver for FreeLoader
  * COPYRIGHT:   Copyright 1998-2003 Brian Palmer (brianp@sginet.com)
- *              Copyright 2009 Hervé Poussineau
+ *              Copyright 2009 HervÃ© Poussineau
  *              Copyright 2019 Victor Perevertkin (victor.perevertkin@reactos.org)
  */
 
@@ -1547,6 +1547,16 @@ const DEVVTBL FatFuncTable =
     L"fastfat",
 };
 
+const DEVVTBL FatXFuncTable =
+{
+    FatClose,
+    FatGetFileInformation,
+    FatOpen,
+    FatRead,
+    FatSeek,
+    L"vfatfs",
+};
+
 const DEVVTBL* FatMount(ULONG DeviceId)
 {
     PFAT_VOLUME_INFO Volume;
@@ -1634,5 +1644,5 @@ const DEVVTBL* FatMount(ULONG DeviceId)
     // Return success
     //
     TRACE("FatMount(%lu) success\n", DeviceId);
-    return &FatFuncTable;
+    return (ISFATX(Volume->FatType) ? &FatXFuncTable : &FatFuncTable);
 }

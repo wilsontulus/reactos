@@ -223,10 +223,16 @@ static void test_GetDatabaseInformationEmpty(PDB pdb)
         {
             ok(pInfo->dwMajor == 2, "Expected pInfo->dwMajor to be 2, was: %d\n", pInfo->dwMajor);
             if (g_WinVersion >= _WIN32_WINNT_VISTA)
+            {
                 ok(pInfo->dwMinor == 1, "Expected pInfo->dwMinor to be 1, was: %d\n", pInfo->dwMinor);
+            }
             else
-                ok(pInfo->dwMinor >= 190915 && pInfo->dwMinor <= 191300,
-                   "Expected pInfo->dwMinor to be between 190915 and 191300, was: %d\n", pInfo->dwMinor);
+            {
+                SYSTEMTIME si = {0};
+                GetSystemTime(&si);
+                DWORD dwExpect = ((DWORD)si.wYear - 2000) * 10000 + si.wMonth * 100 + si.wDay;
+                ok(pInfo->dwMinor == dwExpect, "Expected pInfo->dwMinor to be %d, was: %d\n", dwExpect, pInfo->dwMinor);
+            }
 
             ok(pInfo[1].dwSomething == 0xdededede, "Cookie1 corrupt: 0x%x\n", pInfo[1].dwSomething);
             ok(pInfo[1].dwMajor == 0xdededede, "Cookie2 corrupt: 0x%x\n", pInfo[1].dwMajor);
@@ -1183,27 +1189,6 @@ static void test_is_testdb(PDB pdb)
     }
 }
 
-static BOOL IsUserAdmin()
-{
-    BOOL Result;
-    SID_IDENTIFIER_AUTHORITY NtAuthority = { SECURITY_NT_AUTHORITY };
-    PSID AdministratorsGroup;
-
-    Result = AllocateAndInitializeSid(&NtAuthority, 2,
-                                      SECURITY_BUILTIN_DOMAIN_RID,
-                                      DOMAIN_ALIAS_RID_ADMINS,
-                                      0, 0, 0, 0, 0, 0,
-                                      &AdministratorsGroup);
-    if (Result)
-    {
-        if (!CheckTokenMembership( NULL, AdministratorsGroup, &Result))
-            Result = FALSE;
-        FreeSid(AdministratorsGroup);
-    }
-
-    return Result;
-}
-
 
 template<typename SDBQUERYRESULT_T>
 static void check_adwExeFlags(DWORD adwExeFlags_0, SDBQUERYRESULT_T& query, const char* file, int line, size_t cur)
@@ -1591,8 +1576,6 @@ static void test_MatchApplicationsEx(void)
     ret = RemoveDirectoryW(workdir);
     ok(ret, "RemoveDirectoryW error: %d\n", GetLastError());
 }
-
-
 
 
 static void test_TagRef(void)

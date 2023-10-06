@@ -199,9 +199,9 @@
 @ cdecl -arch=i386 _CItanh()
 @ stub -version=0x600+ _CrtCheckMemory
 @ stub -version=0x600+ _CrtDbgBreak
-@ stub -version=0x600+ _CrtDbgReport
+@ cdecl -version=0x600+ _CrtDbgReport(long str long str str)
 @ stub -version=0x600+ _CrtDbgReportV
-@ stub -version=0x600+ _CrtDbgReportW
+@ cdecl -version=0x600+ _CrtDbgReportW(long wstr long wstr wstr)
 @ stub -version=0x600+ _CrtDbgReportWV
 @ stub -version=0x600+ _CrtDoForAllClientObjects
 @ stub -version=0x600+ _CrtDumpMemoryLeaks
@@ -218,10 +218,10 @@
 @ stub -version=0x600+ _CrtSetDbgBlockType
 @ stub -version=0x600+ _CrtSetDbgFlag
 @ stub -version=0x600+ _CrtSetDumpClient
-@ stub -version=0x600+ _CrtSetReportFile
+@ cdecl -version=0x600+ _CrtSetReportFile(long ptr)
 @ stub -version=0x600+ _CrtSetReportHook
 @ stub -version=0x600+ _CrtSetReportHook2
-@ stub -version=0x600+ _CrtSetReportMode
+@ cdecl -version=0x600+ _CrtSetReportMode(long long)
 @ stdcall _CxxThrowException(long long)
 @ cdecl -arch=i386 -norelay _EH_prolog()
 @ cdecl _Getdays()
@@ -241,7 +241,8 @@
 @ cdecl -arch=i386 -norelay __CxxFrameHandler2(ptr ptr ptr ptr) __CxxFrameHandler
 @ cdecl -version=0x600+ -arch=x86_64 -norelay __CxxFrameHandler2(ptr ptr ptr ptr) __CxxFrameHandler
 @ cdecl -arch=arm -norelay __CxxFrameHandler3(ptr ptr ptr ptr)
-@ cdecl -version=0x600+ -arch=i386,x86_64 -norelay __CxxFrameHandler3(ptr ptr ptr ptr)
+@ cdecl -version=0x600+ -arch=i386 -norelay __CxxFrameHandler3(ptr ptr ptr ptr)
+@ cdecl -version=0x600+ -arch=x86_64 -norelay __CxxFrameHandler3(ptr ptr ptr ptr) __CxxFrameHandler
 @ stdcall -arch=i386 __CxxLongjmpUnwind(ptr)
 @ cdecl -arch=i386 __CxxQueryExceptionSize()
 @ cdecl -arch=i386 __CxxRegisterExceptionObject()
@@ -709,8 +710,8 @@
 @ cdecl -arch=x86_64 _local_unwind(ptr ptr)
 @ cdecl -arch=i386 _local_unwind2(ptr long)
 @ cdecl -arch=i386 -version=0x600+ _local_unwind4(ptr ptr long)
-@ stub -version=0x600+ _localtime32
-@ stub -version=0x600+ _localtime32_s
+@ cdecl -version=0x600+ _localtime32(ptr)
+@ cdecl -version=0x600+ _localtime32_s(ptr ptr)
 @ cdecl _localtime64(ptr)
 @ cdecl -version=0x600+ _localtime64_s(ptr ptr)
 @ cdecl _lock(long)
@@ -1411,7 +1412,7 @@
 @ cdecl memchr(ptr long long)
 @ cdecl memcmp(ptr ptr long)
 @ cdecl memcpy(ptr ptr long)
-@ stub -version=0x600+ memcpy_s
+@ cdecl -version=0x600+ memcpy_s(ptr long)
 @ cdecl memmove(ptr ptr long)
 @ cdecl -version=0x600+ memmove_s(ptr long ptr long)
 @ cdecl memset(ptr long long)

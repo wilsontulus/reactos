@@ -1,9 +1,8 @@
 /*
- * PROJECT:     PAINT for ReactOS
- * LICENSE:     LGPL
- * FILE:        base/applications/mspaint/dialogs.cpp
- * PURPOSE:     Window procedures of the dialog windows plus launching functions
- * PROGRAMMERS: Benedikt Freisen
+ * PROJECT:    PAINT for ReactOS
+ * LICENSE:    LGPL-2.0-or-later (https://spdx.org/licenses/LGPL-2.0-or-later)
+ * PURPOSE:    Window procedures of the dialog windows plus launching functions
+ * COPYRIGHT:  Copyright 2015 Benedikt Freisen <b.freisen@gmx.net>
  */
 
 /* INCLUDES *********************************************************/
@@ -23,11 +22,27 @@ CFontsDialog fontsDialog;
 
 /* FUNCTIONS ********************************************************/
 
+void ShowError(INT stringID, ...)
+{
+    va_list va;
+    va_start(va, stringID);
+
+    CStringW strFormat, strText;
+    strFormat.LoadString(stringID);
+    strText.FormatV(strFormat, va);
+
+    CStringW strProgramName;
+    strProgramName.LoadString(IDS_PROGRAMNAME);
+
+    mainWindow.MessageBox(strText, strProgramName, MB_ICONERROR);
+    va_end(va);
+}
+
 LRESULT CMirrorRotateDialog::OnInitDialog(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 {
     CheckDlgButton(IDD_MIRRORROTATERB1, BST_CHECKED);
     CheckDlgButton(IDD_MIRRORROTATERB4, BST_CHECKED);
-    return 0;
+    return TRUE;
 }
 
 LRESULT CMirrorRotateDialog::OnClose(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
@@ -59,6 +74,9 @@ LRESULT CMirrorRotateDialog::OnCancel(WORD wNotifyCode, WORD wID, HWND hWndCtl, 
 
 LRESULT CMirrorRotateDialog::OnRadioButton3(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled)
 {
+    if (IsDlgButtonChecked(IDD_MIRRORROTATERB3) != BST_CHECKED)
+        return 0;
+
     ::EnableWindow(GetDlgItem(IDD_MIRRORROTATERB4), TRUE);
     ::EnableWindow(GetDlgItem(IDD_MIRRORROTATERB5), TRUE);
     ::EnableWindow(GetDlgItem(IDD_MIRRORROTATERB6), TRUE);
@@ -67,13 +85,17 @@ LRESULT CMirrorRotateDialog::OnRadioButton3(WORD wNotifyCode, WORD wID, HWND hWn
 
 LRESULT CMirrorRotateDialog::OnRadioButton12(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled)
 {
+    if (IsDlgButtonChecked(IDD_MIRRORROTATERB1) != BST_CHECKED &&
+        IsDlgButtonChecked(IDD_MIRRORROTATERB2) != BST_CHECKED)
+    {
+        return 0;
+    }
+
     ::EnableWindow(GetDlgItem(IDD_MIRRORROTATERB4), FALSE);
     ::EnableWindow(GetDlgItem(IDD_MIRRORROTATERB5), FALSE);
     ::EnableWindow(GetDlgItem(IDD_MIRRORROTATERB6), FALSE);
     return 0;
 }
-
-
 
 LRESULT CAttributesDialog::OnInitDialog(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 {
@@ -81,27 +103,39 @@ LRESULT CAttributesDialog::OnInitDialog(UINT nMsg, WPARAM wParam, LPARAM lParam,
     newHeight = imageModel.GetHeight();
 
     CheckDlgButton(IDD_ATTRIBUTESRB3, BST_CHECKED);
-    CheckDlgButton(IDD_ATTRIBUTESRB5, BST_CHECKED);
     SetDlgItemInt(IDD_ATTRIBUTESEDIT1, newWidth, FALSE);
     SetDlgItemInt(IDD_ATTRIBUTESEDIT2, newHeight, FALSE);
 
-    if (isAFile)
+    if (imageModel.IsBlackAndWhite())
+        CheckRadioButton(IDD_ATTRIBUTESRB4, IDD_ATTRIBUTESRB5, IDD_ATTRIBUTESRB4);
+    else
+        CheckRadioButton(IDD_ATTRIBUTESRB4, IDD_ATTRIBUTESRB5, IDD_ATTRIBUTESRB5);
+
+    if (g_isAFile)
     {
         TCHAR date[100];
         TCHAR temp[100];
-        GetDateFormat(LOCALE_USER_DEFAULT, 0, &fileTime, NULL, date, _countof(date));
-        GetTimeFormat(LOCALE_USER_DEFAULT, 0, &fileTime, NULL, temp, _countof(temp));
+        GetDateFormat(LOCALE_USER_DEFAULT, 0, &g_fileTime, NULL, date, _countof(date));
+        GetTimeFormat(LOCALE_USER_DEFAULT, 0, &g_fileTime, NULL, temp, _countof(temp));
         _tcscat(date, _T(" "));
         _tcscat(date, temp);
         CString strSize;
-        strSize.Format(IDS_FILESIZE, fileSize);
+        strSize.Format(IDS_FILESIZE, g_fileSize);
         SetDlgItemText(IDD_ATTRIBUTESTEXT6, date);
         SetDlgItemText(IDD_ATTRIBUTESTEXT7, strSize);
     }
+
+    CString strUnit;
+    GetDlgItemText(IDD_ATTRIBUTESTEXT8, strUnit);
+
     CString strRes;
-    strRes.Format(IDS_PRINTRES, fileHPPM, fileVPPM);
+    if (strUnit == L"dpi")
+        strRes.Format(IDS_PRINTRES, ROUND(g_xDpi), ROUND(g_yDpi));
+    else
+        strRes.Format(IDS_PRINTRES, ROUND(PpcmFromDpi(g_xDpi)), ROUND(PpcmFromDpi(g_yDpi)));
+
     SetDlgItemText(IDD_ATTRIBUTESTEXT8, strRes);
-    return 0;
+    return TRUE;
 }
 
 LRESULT CAttributesDialog::OnClose(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
@@ -112,6 +146,7 @@ LRESULT CAttributesDialog::OnClose(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL
 
 LRESULT CAttributesDialog::OnOk(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled)
 {
+    m_bBlackAndWhite = (IsDlgButtonChecked(IDD_ATTRIBUTESRB4) == BST_CHECKED);
     EndDialog(1);
     return 0;
 }
@@ -135,26 +170,35 @@ LRESULT CAttributesDialog::OnDefault(WORD wNotifyCode, WORD wID, HWND hWndCtl, B
 
 LRESULT CAttributesDialog::OnRadioButton1(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled)
 {
+    if (IsDlgButtonChecked(IDD_ATTRIBUTESRB1) != BST_CHECKED)
+        return 0;
+
     CString strNum;
-    strNum.Format(_T("%.3lf"), newWidth / (0.0254 * fileHPPM));
+    strNum.Format(_T("%.3lf"), newWidth / g_xDpi);
     SetDlgItemText(IDD_ATTRIBUTESEDIT1, strNum);
-    strNum.Format(_T("%.3lf"), newHeight / (0.0254 * fileVPPM));
+    strNum.Format(_T("%.3lf"), newHeight / g_yDpi);
     SetDlgItemText(IDD_ATTRIBUTESEDIT2, strNum);
     return 0;
 }
 
 LRESULT CAttributesDialog::OnRadioButton2(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled)
 {
+    if (IsDlgButtonChecked(IDD_ATTRIBUTESRB2) != BST_CHECKED)
+        return 0;
+
     CString strNum;
-    strNum.Format(_T("%.3lf"), newWidth * 100.0 / fileHPPM);
+    strNum.Format(_T("%.3lf"), newWidth / PpcmFromDpi(g_xDpi));
     SetDlgItemText(IDD_ATTRIBUTESEDIT1, strNum);
-    strNum.Format(_T("%.3lf"), newHeight * 100.0 / fileVPPM);
+    strNum.Format(_T("%.3lf"), newHeight / PpcmFromDpi(g_yDpi));
     SetDlgItemText(IDD_ATTRIBUTESEDIT2, strNum);
     return 0;
 }
 
 LRESULT CAttributesDialog::OnRadioButton3(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL& bHandled)
 {
+    if (IsDlgButtonChecked(IDD_ATTRIBUTESRB3) != BST_CHECKED)
+        return 0;
+
     SetDlgItemInt(IDD_ATTRIBUTESEDIT1, newWidth, FALSE);
     SetDlgItemInt(IDD_ATTRIBUTESEDIT2, newHeight, FALSE);
     return 0;
@@ -168,12 +212,12 @@ LRESULT CAttributesDialog::OnEdit1(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOO
         if (IsDlgButtonChecked(IDD_ATTRIBUTESRB1))
         {
             GetDlgItemText(IDD_ATTRIBUTESEDIT1, tempS, _countof(tempS));
-            newWidth = max(1, (int) (_tcstod(tempS, NULL) * fileHPPM * 0.0254));
+            newWidth = max(1, (int) (_tcstod(tempS, NULL) * g_xDpi));
         }
         else if (IsDlgButtonChecked(IDD_ATTRIBUTESRB2))
         {
             GetDlgItemText(IDD_ATTRIBUTESEDIT1, tempS, _countof(tempS));
-            newWidth = max(1, (int) (_tcstod(tempS, NULL) * fileHPPM / 100));
+            newWidth = max(1, (int) (_tcstod(tempS, NULL) * PpcmFromDpi(g_xDpi)));
         }
         else if (IsDlgButtonChecked(IDD_ATTRIBUTESRB3))
         {
@@ -193,12 +237,12 @@ LRESULT CAttributesDialog::OnEdit2(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOO
         if (IsDlgButtonChecked(IDD_ATTRIBUTESRB1))
         {
             GetDlgItemText(IDD_ATTRIBUTESEDIT2, tempS, _countof(tempS));
-            newHeight = max(1, (int) (_tcstod(tempS, NULL) * fileVPPM * 0.0254));
+            newHeight = max(1, (int) (_tcstod(tempS, NULL) * g_yDpi));
         }
         else if (IsDlgButtonChecked(IDD_ATTRIBUTESRB2))
         {
             GetDlgItemText(IDD_ATTRIBUTESEDIT2, tempS, _countof(tempS));
-            newHeight = max(1, (int) (_tcstod(tempS, NULL) * fileVPPM / 100));
+            newHeight = max(1, (int) (_tcstod(tempS, NULL) * PpcmFromDpi(g_yDpi)));
         }
         else if (IsDlgButtonChecked(IDD_ATTRIBUTESRB3))
         {
@@ -218,7 +262,7 @@ LRESULT CStretchSkewDialog::OnInitDialog(UINT nMsg, WPARAM wParam, LPARAM lParam
     SetDlgItemInt(IDD_STRETCHSKEWEDITVSTRETCH, 100, FALSE);
     SetDlgItemInt(IDD_STRETCHSKEWEDITHSKEW, 0, FALSE);
     SetDlgItemInt(IDD_STRETCHSKEWEDITVSKEW, 0, FALSE);
-    return 0;
+    return TRUE;
 }
 
 LRESULT CStretchSkewDialog::OnClose(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
@@ -234,9 +278,9 @@ LRESULT CStretchSkewDialog::OnOk(WORD wNotifyCode, WORD wID, HWND hWndCtl, BOOL&
     CString strrcAngle;
     BOOL tr1, tr2, tr3, tr4;
 
-    strrcIntNumbers.LoadString(hProgInstance, IDS_INTNUMBERS);
-    strrcPercentage.LoadString(hProgInstance, IDS_PERCENTAGE);
-    strrcAngle.LoadString(hProgInstance, IDS_ANGLE);
+    strrcIntNumbers.LoadString(g_hinstExe, IDS_INTNUMBERS);
+    strrcPercentage.LoadString(g_hinstExe, IDS_PERCENTAGE);
+    strrcAngle.LoadString(g_hinstExe, IDS_ANGLE);
 
     percentage.x = GetDlgItemInt(IDD_STRETCHSKEWEDITHSTRETCH, &tr1, FALSE);
     percentage.y = GetDlgItemInt(IDD_STRETCHSKEWEDITVSTRETCH, &tr2, FALSE);
@@ -341,11 +385,11 @@ void CFontsDialog::InitToolbar()
     SendMessage(hwndToolbar, TB_SETBUTTONWIDTH, 0, MAKELPARAM(20, 20));
     
     TBADDBITMAP AddBitmap;
-    AddBitmap.hInst = hProgInstance;
+    AddBitmap.hInst = g_hinstExe;
     AddBitmap.nID = IDB_FONTSTOOLBAR;
     SendMessage(hwndToolbar, TB_ADDBITMAP, 4, (LPARAM)&AddBitmap);
 
-    HIMAGELIST himl = ImageList_LoadImage(hProgInstance, MAKEINTRESOURCE(IDB_FONTSTOOLBAR),
+    HIMAGELIST himl = ImageList_LoadImage(g_hinstExe, MAKEINTRESOURCE(IDB_FONTSTOOLBAR),
                                           16, 8, RGB(255, 0, 255), IMAGE_BITMAP,
                                           LR_CREATEDIBSECTION);
     SendMessage(hwndToolbar, TB_SETIMAGELIST, 0, (LPARAM)himl);
@@ -505,7 +549,7 @@ LRESULT CFontsDialog::OnNotify(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& bH
     if (pnmhdr->code == TTN_NEEDTEXT)
     {
         LPTOOLTIPTEXT pToolTip = reinterpret_cast<LPTOOLTIPTEXT>(lParam);
-        pToolTip->hinst = hProgInstance;
+        pToolTip->hinst = g_hinstExe;
         switch (pnmhdr->idFrom)
         {
             case IDM_BOLD:      pToolTip->lpszText = MAKEINTRESOURCE(IDS_BOLD); break;

@@ -4,6 +4,7 @@ extern ATOM AtomMessage;
 extern ATOM AtomWndObj; /* WNDOBJ list */
 extern ATOM AtomLayer;
 extern ATOM AtomFlashWndState;
+extern BOOL g_bWindowSnapEnabled;
 
 #define HAS_DLGFRAME(Style, ExStyle) \
             (((ExStyle) & WS_EX_DLGMODALFRAME) || \
@@ -98,6 +99,8 @@ extern PWINDOWLIST gpwlCache;
 
 PWINDOWLIST FASTCALL IntBuildHwndList(PWND pwnd, DWORD dwFlags, PTHREADINFO pti);
 VOID FASTCALL IntFreeHwndList(PWINDOWLIST pwlTarget);
+HWND FASTCALL IntFindWindow(PWND Parent, PWND ChildAfter, RTL_ATOM ClassAtom,
+                            PUNICODE_STRING WindowName);
 
 /* Undocumented dwFlags for IntBuildHwndList */
 #define IACE_LIST  0x0002
@@ -120,5 +123,68 @@ BOOL FASTCALL IntImeCanDestroyDefIMEforChild(PWND pImeWnd, PWND pwndTarget);
 BOOL FASTCALL IntImeCanDestroyDefIME(PWND pImeWnd, PWND pwndTarget);
 BOOL FASTCALL IntBroadcastImeShowStatusChange(PWND pImeWnd, BOOL bShow);
 VOID FASTCALL IntNotifyImeShowStatus(PWND pImeWnd);
+VOID FASTCALL IntCheckImeShowStatusInThread(PWND pImeWnd);
+
+static inline
+VOID
+ReplaceWndPtr(_Inout_ PWND* ppwnd, _In_opt_ PWND pwndNew)
+{
+    /* First reference the new one */
+    if (pwndNew != NULL)
+    {
+        UserReferenceObject(pwndNew);
+    }
+
+    /* Then dereference the previous one */
+    if (*ppwnd != NULL)
+    {
+        UserDereferenceObject(*ppwnd);
+    }
+
+    /* And set */
+    *ppwnd = pwndNew;
+}
+
+static inline
+VOID
+WndSetOwner(_Inout_ PWND pwnd, _In_opt_ PWND pwndOwner)
+{
+    ReplaceWndPtr(&pwnd->spwndOwner, pwndOwner);
+}
+
+static inline
+VOID
+WndSetParent(_Inout_ PWND pwnd, _In_opt_ PWND pwndParent)
+{
+    ReplaceWndPtr(&pwnd->spwndParent, pwndParent);
+}
+
+static inline
+VOID
+WndSetChild(_Inout_ PWND pwnd, _In_opt_ PWND pwndChild)
+{
+    ReplaceWndPtr(&pwnd->spwndChild, pwndChild);
+}
+
+static inline
+VOID
+WndSetNext(_Inout_ PWND pwnd, _In_opt_ PWND pwndNext)
+{
+    ReplaceWndPtr(&pwnd->spwndNext, pwndNext);
+}
+
+static inline
+VOID
+WndSetPrev(_Inout_ PWND pwnd, _In_opt_ PWND pwndPrev)
+{
+    ReplaceWndPtr(&pwnd->spwndPrev, pwndPrev);
+}
+
+static inline
+VOID
+WndSetLastActive(_Inout_ PWND pwnd, _In_opt_ PWND pwndLastActive)
+{
+    ReplaceWndPtr(&pwnd->spwndLastActive, pwndLastActive);
+}
 
 /* EOF */

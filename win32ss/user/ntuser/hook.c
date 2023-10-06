@@ -2,10 +2,9 @@
  * COPYRIGHT:        See COPYING in the top level directory
  * PROJECT:          ReactOS kernel
  * PURPOSE:          Window hooks
- * FILE:             win32ss/user/ntuser/hook.c
- * PROGRAMER:        Casper S. Hornstrup (chorns@users.sourceforge.net)
- *                   James Tabor (james.tabor@rectos.org)
- *                   Rafal Harabien (rafalh@reactos.org)
+ * PROGRAMER:        Casper S. Hornstrup <chorns@users.sourceforge.net>
+ *                   James Tabor <james.tabor@reactos.org>
+ *                   Rafal Harabien <rafalh@reactos.org>
   * NOTE:            Most of this code was adapted from Wine,
  *                   Copyright (C) 2002 Alexandre Julliard
  */
@@ -44,7 +43,7 @@ IntLoadHookModule(int iHookID, HHOOK hHook, BOOL Unload)
         {
             /* A callback in user mode can trigger UserLoadApiHook to be called and
                as a result IntLoadHookModule will be called recursively.
-               To solve this we set the flag that means that the appliaction has
+               To solve this we set the flag that means that the application has
                loaded the api hook before the callback and in case of error we remove it */
             ppi->W32PF_flags |= W32PF_APIHOOKLOADED;
 

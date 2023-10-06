@@ -85,40 +85,36 @@ PWND FASTCALL IntGetWindowObject(HWND hWnd)
 
 PWND FASTCALL VerifyWnd(PWND pWnd)
 {
-   HWND hWnd;
-   UINT State, State2;
-   ULONG Error;
+    ULONG Error;
 
-   if (!pWnd) return NULL;
+    if (!pWnd ||
+        (pWnd->state & WNDS_DESTROYED) ||
+        (pWnd->state2 & WNDS2_INDESTROY))
+    {
+        return NULL;
+    }
 
-   Error = EngGetLastError();
+    Error = EngGetLastError();
 
-   _SEH2_TRY
-   {
-      hWnd = UserHMGetHandle(pWnd);
-      State = pWnd->state;
-      State2 = pWnd->state2;
-   }
-   _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
-   {
-      EngSetLastError(Error);
-      _SEH2_YIELD(return NULL);
-   }
-   _SEH2_END
+    if (UserObjectInDestroy(UserHMGetHandle(pWnd)))
+        pWnd = NULL;
 
-   if ( UserObjectInDestroy(hWnd) ||
-        State & WNDS_DESTROYED ||
-        State2 & WNDS2_INDESTROY )
-      pWnd = NULL;
-
-   EngSetLastError(Error);
-   return pWnd;
+    EngSetLastError(Error);
+    return pWnd;
 }
 
 PWND FASTCALL ValidateHwndNoErr(HWND hWnd)
 {
-   if (hWnd) return (PWND)UserGetObjectNoErr(gHandleTable, hWnd, TYPE_WINDOW);
-   return NULL;
+    PWND Window;
+
+    if (!hWnd)
+        return NULL;
+
+    Window = (PWND)UserGetObjectNoErr(gHandleTable, hWnd, TYPE_WINDOW);
+    if (!Window || (Window->state & WNDS_DESTROYED))
+        return NULL;
+
+    return Window;
 }
 
 /* Temp HACK */
@@ -306,6 +302,15 @@ IntWinListChildren(PWND Window)
     return List;
 }
 
+static BOOL
+IntWndIsDefaultIme(_In_ PWND Window)
+{
+    PTHREADINFO pti = Window->head.pti;
+
+    return (IS_IMM_MODE() && !(pti->TIF_flags & TIF_INCLEANUP) &&
+            Window == pti->spwndDefaultIme);
+}
+
 HWND* FASTCALL
 IntWinListOwnedPopups(PWND Window)
 {
@@ -319,7 +324,7 @@ IntWinListOwnedPopups(PWND Window)
 
     for (Child = Desktop->spwndChild; Child; Child = Child->spwndNext)
     {
-        if (Child->spwndOwner == Window)
+        if (Child->spwndOwner == Window && !IntWndIsDefaultIme(Child))
             ++NumOwned;
     }
 
@@ -334,7 +339,7 @@ IntWinListOwnedPopups(PWND Window)
     Index = 0;
     for (Child = Desktop->spwndChild; Child; Child = Child->spwndNext)
     {
-        if (Child->spwndOwner == Window)
+        if (Child->spwndOwner == Window && !IntWndIsDefaultIme(Child))
             List[Index++] = Child->head.h;
     }
     List[Index] = NULL;
@@ -493,7 +498,7 @@ static void IntSendDestroyMsg(HWND hWnd)
       }
 
       /* If the window being destroyed is currently tracked... */
-      if (ti->rpdesk->spwndTrack == Window)
+      if (ti->rpdesk && ti->rpdesk->spwndTrack == Window)
       {
           IntRemoveTrackMouseEvent(ti->rpdesk);
       }
@@ -588,11 +593,11 @@ LRESULT co_UserFreeWindow(PWND Window,
    Window->style &= ~WS_VISIBLE;
    Window->head.pti->cVisWindows--;
 
-
    /* remove the window already at this point from the thread window list so we
       don't get into trouble when destroying the thread windows while we're still
       in co_UserFreeWindow() */
-   RemoveEntryList(&Window->ThreadListEntry);
+   if (!IsListEmpty(&Window->ThreadListEntry))
+       RemoveEntryList(&Window->ThreadListEntry);
 
    BelongsToThreadData = IntWndBelongsToThread(Window, ThreadData);
 
@@ -662,7 +667,7 @@ LRESULT co_UserFreeWindow(PWND Window,
    if (ThreadData->spwndDefaultIme &&
        ThreadData->spwndDefaultIme->spwndOwner == Window)
    {
-      ThreadData->spwndDefaultIme->spwndOwner = NULL;
+      WndSetOwner(ThreadData->spwndDefaultIme, NULL);
    }
 
    if (IS_IMM_MODE() && Window == ThreadData->spwndDefaultIme)
@@ -726,6 +731,12 @@ LRESULT co_UserFreeWindow(PWND Window,
       TRACE("Window->PropListItems %lu\n",Window->PropListItems);
       ASSERT(Window->PropListItems==0);
    }
+
+   /* Kill any reference to linked windows. Prev & Next are taken care of in IntUnlinkWindow */
+   WndSetOwner(Window, NULL);
+   WndSetParent(Window, NULL);
+   WndSetChild(Window, NULL);
+   WndSetLastActive(Window, NULL);
 
    UserReferenceObject(Window);
    UserMarkObjectDestroy(Window);
@@ -937,31 +948,32 @@ IntLinkWindow(
 {
     if (Wnd == WndInsertAfter)
     {
-        ERR("IntLinkWindow -- Trying to link window 0x%p to itself!!\n", Wnd);
+        ERR("Trying to link window 0x%p to itself\n", Wnd);
+        ASSERT(WndInsertAfter != Wnd);
         return;
     }
 
-    Wnd->spwndPrev = WndInsertAfter;
+    WndSetPrev(Wnd, WndInsertAfter);
     if (Wnd->spwndPrev)
     {
         /* Link after WndInsertAfter */
         ASSERT(Wnd != WndInsertAfter->spwndNext);
-        Wnd->spwndNext = WndInsertAfter->spwndNext;
+        WndSetNext(Wnd, WndInsertAfter->spwndNext);
         if (Wnd->spwndNext)
-            Wnd->spwndNext->spwndPrev = Wnd;
+            WndSetPrev(Wnd->spwndNext, Wnd);
 
         ASSERT(Wnd != Wnd->spwndPrev);
-        Wnd->spwndPrev->spwndNext = Wnd;
+        WndSetNext(Wnd->spwndPrev, Wnd);
     }
     else
     {
         /* Link at the top */
         ASSERT(Wnd != Wnd->spwndParent->spwndChild);
-        Wnd->spwndNext = Wnd->spwndParent->spwndChild;
+        WndSetNext(Wnd, Wnd->spwndParent->spwndChild);
         if (Wnd->spwndNext)
-            Wnd->spwndNext->spwndPrev = Wnd;
+            WndSetPrev(Wnd->spwndNext, Wnd);
 
-        Wnd->spwndParent->spwndChild = Wnd;
+        WndSetChild(Wnd->spwndParent, Wnd);
     }
 }
 
@@ -1040,8 +1052,15 @@ VOID FASTCALL IntLinkHwnd(PWND Wnd, HWND hWndPrev)
         }
 
         if (Wnd == WndInsertAfter)
-            ERR("IntLinkHwnd -- Trying to link window 0x%p to itself!!\n", Wnd);
-        IntLinkWindow(Wnd, WndInsertAfter);
+        {
+            ERR("Trying to link window 0x%p to itself\n", Wnd);
+            ASSERT(WndInsertAfter != Wnd);
+            // FIXME: IntUnlinkWindow(Wnd) was already called. Continuing as is seems wrong!
+        }
+        else
+        {
+            IntLinkWindow(Wnd, WndInsertAfter);
+        }
 
         /* Fix the WS_EX_TOPMOST flag */
         if (!(WndInsertAfter->ExStyle & WS_EX_TOPMOST))
@@ -1091,6 +1110,7 @@ IntProcessOwnerSwap(PWND Wnd, PWND WndNewOwner, PWND WndOldOwner)
    // FIXME: System Tray checks.
 }
 
+static
 HWND FASTCALL
 IntSetOwner(HWND hWnd, HWND hWndNewOwner)
 {
@@ -1119,14 +1139,7 @@ IntSetOwner(HWND hWnd, HWND hWndNewOwner)
 
    if (IntValidateOwnerDepth(Wnd, WndNewOwner))
    {
-      if (WndNewOwner)
-      {
-         Wnd->spwndOwner= WndNewOwner;
-      }
-      else
-      {
-         Wnd->spwndOwner = NULL;
-      }
+      WndSetOwner(Wnd, WndNewOwner);
    }
    else
    {
@@ -1212,7 +1225,7 @@ co_IntSetParent(PWND Wnd, PWND WndNewParent)
       Wnd->ExStyle2 &= ~WS_EX2_LINKED;
 
       /* Set the new parent */
-      Wnd->spwndParent = WndNewParent;
+      WndSetParent(Wnd, WndNewParent);
 
       if ( Wnd->style & WS_CHILD &&
            Wnd->spwndOwner &&
@@ -1344,15 +1357,16 @@ IntUnlinkWindow(PWND Wnd)
     ASSERT(Wnd != Wnd->spwndPrev);
 
     if (Wnd->spwndNext)
-        Wnd->spwndNext->spwndPrev = Wnd->spwndPrev;
+        WndSetPrev(Wnd->spwndNext, Wnd->spwndPrev);
 
     if (Wnd->spwndPrev)
-        Wnd->spwndPrev->spwndNext = Wnd->spwndNext;
+        WndSetNext(Wnd->spwndPrev, Wnd->spwndNext);
 
     if (Wnd->spwndParent && Wnd->spwndParent->spwndChild == Wnd)
-        Wnd->spwndParent->spwndChild = Wnd->spwndNext;
+        WndSetChild(Wnd->spwndParent, Wnd->spwndNext);
 
-    Wnd->spwndPrev = Wnd->spwndNext = NULL;
+    WndSetPrev(Wnd, NULL);
+    WndSetNext(Wnd, NULL);
 }
 
 // Win: ExpandWindowList
@@ -1868,10 +1882,10 @@ PWND FASTCALL IntCreateWindow(CREATESTRUCTW* Cs,
     * Fill out the structure describing it.
     */
    /* Remember, pWnd->head is setup in object.c ... */
-   pWnd->spwndParent = ParentWindow;
-   pWnd->spwndOwner = OwnerWindow;
+   WndSetParent(pWnd, ParentWindow);
+   WndSetOwner(pWnd, OwnerWindow);
    pWnd->fnid = 0;
-   pWnd->spwndLastActive = pWnd;
+   WndSetLastActive(pWnd, pWnd);
    // Ramp up compatible version sets.
    if ( dwVer >= WINVER_WIN31 )
    {
@@ -1904,6 +1918,7 @@ PWND FASTCALL IntCreateWindow(CREATESTRUCTW* Cs,
        pWnd->HideAccel = pWnd->spwndParent->HideAccel;
    }
 
+   InitializeListHead(&pWnd->ThreadListEntry);
    pWnd->head.pti->cWindows++;
 
    if (Class->spicn && !Class->spicnSm)
@@ -2047,28 +2062,6 @@ PWND FASTCALL IntCreateWindow(CREATESTRUCTW* Cs,
       pWnd->strName.MaximumLength = WindowName->Length + sizeof(UNICODE_NULL);
    }
 
-   /* Create the IME window for pWnd */
-   if (IS_IMM_MODE() && !(pti->spwndDefaultIme) && IntWantImeWindow(pWnd))
-   {
-      PWND pwndDefaultIme = co_IntCreateDefaultImeWindow(pWnd, pWnd->hModule);
-      UserAssignmentLock((PVOID*)&(pti->spwndDefaultIme), pwndDefaultIme);
-
-      if (pwndDefaultIme && (pti->pClientInfo->CI_flags & CI_IMMACTIVATE))
-      {
-         USER_REFERENCE_ENTRY Ref;
-         HKL hKL;
-
-         UserRefObjectCo(pwndDefaultIme, &Ref);
-
-         hKL = pti->KeyboardLayout->hkl;
-         co_IntSendMessage(UserHMGetHandle(pwndDefaultIme), WM_IME_SYSTEM,
-                           IMS_ACTIVATELAYOUT, (LPARAM)hKL);
-         pti->pClientInfo->CI_flags &= ~CI_IMMACTIVATE;
-
-         UserDerefObjectCo(pwndDefaultIme);
-      }
-   }
-
    /* Correct the window style. */
    if ((pWnd->style & (WS_CHILD | WS_POPUP)) != WS_CHILD)
    {
@@ -2203,7 +2196,7 @@ co_UserCreateWindowEx(CREATESTRUCTW* Cs,
    pti = GetW32ThreadInfo();
    if (pti == NULL || pti->rpdesk == NULL)
    {
-      ERR("Thread is not attached to a desktop! Cannot create window!\n");
+      ERR("Thread is not attached to a desktop! Cannot create window (%wZ)\n", ClassName);
       return NULL; // There is nothing to cleanup.
    }
    WinSta = pti->rpdesk->rpwinstaParent;
@@ -2238,7 +2231,7 @@ co_UserCreateWindowEx(CREATESTRUCTW* Cs,
     }
     else if ((Cs->style & (WS_CHILD|WS_POPUP)) == WS_CHILD)
     {
-         ERR("Cannot create a child window without a parent!\n");
+         ERR("Cannot create a child window (%wZ) without a parent\n", ClassName);
          EngSetLastError(ERROR_TLW_WITH_WSCHILD);
          goto cleanup;  /* WS_CHILD needs a parent, but WS_POPUP doesn't */
     }
@@ -2258,12 +2251,12 @@ co_UserCreateWindowEx(CREATESTRUCTW* Cs,
 
     if (hWndParent && !ParentWindow)
     {
-        ERR("Got invalid parent window handle\n");
+        ERR("Got invalid parent window handle for %wZ\n", ClassName);
         goto cleanup;
     }
     else if (hWndOwner && !OwnerWindow)
     {
-        ERR("Got invalid owner window handle\n");
+        ERR("Got invalid owner window handle for %wZ\n", ClassName);
         ParentWindow = NULL;
         goto cleanup;
     }
@@ -2302,7 +2295,7 @@ co_UserCreateWindowEx(CREATESTRUCTW* Cs,
                             dwVer );
    if(!Window)
    {
-       ERR("IntCreateWindow failed!\n");
+       ERR("IntCreateWindow(%wZ) failed\n", ClassName);
        goto cleanup;
    }
 
@@ -2428,7 +2421,7 @@ co_UserCreateWindowEx(CREATESTRUCTW* Cs,
    Result = co_IntSendMessage(UserHMGetHandle(Window), WM_NCCREATE, 0, (LPARAM) Cs);
    if (!Result)
    {
-      ERR("co_UserCreateWindowEx(): NCCREATE message failed\n");
+      ERR("co_UserCreateWindowEx(%wZ): NCCREATE message failed\n", ClassName);
       goto cleanup;
    }
 
@@ -2440,6 +2433,33 @@ co_UserCreateWindowEx(CREATESTRUCTW* Cs,
           IntLinkHwnd(Window, HWND_BOTTOM);
       else
           IntLinkHwnd(Window, hwndInsertAfter);
+   }
+
+   /* Create the IME window for pWnd */
+   if (IS_IMM_MODE() && !pti->spwndDefaultIme && IntWantImeWindow(Window))
+   {
+      PWND pwndDefaultIme = co_IntCreateDefaultImeWindow(Window, Window->hModule);
+      UserAssignmentLock((PVOID*)&pti->spwndDefaultIme, pwndDefaultIme);
+
+      if (pwndDefaultIme)
+      {
+         HWND hImeWnd;
+         USER_REFERENCE_ENTRY Ref;
+         UserRefObjectCo(pwndDefaultIme, &Ref);
+
+         hImeWnd = UserHMGetHandle(pwndDefaultIme);
+
+         co_IntSendMessage(hImeWnd, WM_IME_SYSTEM, IMS_LOADTHREADLAYOUT, 0);
+
+         if (pti->pClientInfo->CI_flags & CI_IMMACTIVATE)
+         {
+            HKL hKL = pti->KeyboardLayout->hkl;
+            co_IntSendMessage(hImeWnd, WM_IME_SYSTEM, IMS_ACTIVATELAYOUT, (LPARAM)hKL);
+            pti->pClientInfo->CI_flags &= ~CI_IMMACTIVATE;
+         }
+
+         UserDerefObjectCo(pwndDefaultIme);
+      }
    }
 
    /* Send the WM_NCCALCSIZE message */
@@ -2461,7 +2481,7 @@ co_UserCreateWindowEx(CREATESTRUCTW* Cs,
    Result = co_IntSendMessage(UserHMGetHandle(Window), WM_CREATE, 0, (LPARAM) Cs);
    if (Result == (LRESULT)-1)
    {
-      ERR("co_UserCreateWindowEx(): WM_CREATE message failed\n");
+      ERR("co_UserCreateWindowEx(%wZ): WM_CREATE message failed\n", ClassName);
       goto cleanup;
    }
 
@@ -2489,7 +2509,11 @@ co_UserCreateWindowEx(CREATESTRUCTW* Cs,
 
       SwFlag = co_WinPosMinMaximize(Window, SwFlag, &NewPos);
       SwFlag |= SWP_NOZORDER|SWP_FRAMECHANGED; /* Frame always gets changed */
-      if (!(style & WS_VISIBLE) || (style & WS_CHILD) || UserGetActiveWindow()) SwFlag |= SWP_NOACTIVATE;
+      if (!(style & WS_VISIBLE) || (style & WS_CHILD) || UserGetActiveWindow() ||
+          (Window->ExStyle & WS_EX_NOACTIVATE))
+      {
+         SwFlag |= SWP_NOACTIVATE;
+      }
       co_WinPosSetWindowPos(Window, 0, NewPos.left, NewPos.top,
                             NewPos.right, NewPos.bottom, SwFlag);
    }
@@ -2548,7 +2572,7 @@ co_UserCreateWindowEx(CREATESTRUCTW* Cs,
        co_IntUserManualGuiCheck(TRUE);
    }
 
-   TRACE("co_UserCreateWindowEx(): Created window %p\n", hWnd);
+   TRACE("co_UserCreateWindowEx(%wZ): Created window %p\n", ClassName, hWnd);
    ret = Window;
 
 cleanup:
@@ -2795,7 +2819,6 @@ VOID FASTCALL IntDestroyOwnedWindows(PWND Window)
     HWND* List;
     HWND* phWnd;
     PWND pWnd;
-    PTHREADINFO pti = Window->head.pti;
     USER_REFERENCE_ENTRY Ref;
 
     List = IntWinListOwnedPopups(Window);
@@ -2810,13 +2833,7 @@ VOID FASTCALL IntDestroyOwnedWindows(PWND Window)
         ASSERT(pWnd->spwndOwner == Window);
         ASSERT(pWnd != Window);
 
-        if (IS_IMM_MODE() && !(pti->TIF_flags & TIF_INCLEANUP) &&
-            pWnd == pti->spwndDefaultIme)
-        {
-            continue;
-        }
-
-        pWnd->spwndOwner = NULL;
+        WndSetOwner(pWnd, NULL);
         if (IntWndBelongsToThread(pWnd, PsGetCurrentThreadWin32Thread()))
         {
             UserRefObjectCo(pWnd, &Ref); // Temp HACK?
@@ -2842,6 +2859,15 @@ BOOLEAN co_UserDestroyWindow(PVOID Object)
    PWND Window = Object;
 
    ASSERT_REFS_CO(Window); // FIXME: Temp HACK?
+
+   /* NtUserDestroyWindow does check if the window has already been destroyed
+      but co_UserDestroyWindow can be called from more paths which means
+      that it can also be called for a window that has already been destroyed. */
+   if (!IntIsWindow(UserHMGetHandle(Window)))
+   {
+      TRACE("Tried to destroy a window twice\n");
+      return TRUE;
+   }
 
    hWnd = Window->head.h;
    ti = PsGetCurrentThreadWin32Thread();
@@ -2913,7 +2939,7 @@ BOOLEAN co_UserDestroyWindow(PVOID Object)
          pwndTemp = pwndTemp->spwndOwner;
 
       if (pwndTemp->spwndLastActive == Window)
-         pwndTemp->spwndLastActive = Window->spwndOwner;
+         WndSetLastActive(pwndTemp, Window->spwndOwner);
    }
 
    if (Window->spwndParent && IntIsWindow(UserHMGetHandle(Window)))
@@ -2941,7 +2967,7 @@ BOOLEAN co_UserDestroyWindow(PVOID Object)
     * Check if this window is the Shell's Desktop Window. If so set hShellWindow to NULL
     */
 
-   if ((ti != NULL) && (ti->pDeskInfo != NULL))
+   if (ti->pDeskInfo != NULL)
    {
       if (ti->pDeskInfo->hShellWindow == hWnd)
       {
@@ -2975,9 +3001,10 @@ BOOLEAN co_UserDestroyWindow(PVOID Object)
    /* Send destroy messages */
    IntSendDestroyMsg(UserHMGetHandle(Window));
 
-   // Destroy the default IME window if necessary
+   /* Destroy the default IME window if necessary */
    if (IS_IMM_MODE() && !(ti->TIF_flags & TIF_INCLEANUP) &&
-       ti->spwndDefaultIme && !IS_WND_IMELIKE(Window) && !(Window->state & WNDS_DESTROYED))
+       ti->spwndDefaultIme && (ti->spwndDefaultIme != Window) &&
+       !(Window->state & WNDS_DESTROYED) && !IS_WND_IMELIKE(Window))
    {
        if (IS_WND_CHILD(Window))
        {
@@ -3035,7 +3062,7 @@ CLEANUP:
 }
 
 
-static HWND FASTCALL
+HWND FASTCALL
 IntFindWindow(PWND Parent,
               PWND ChildAfter,
               RTL_ATOM ClassAtom,
@@ -4136,7 +4163,7 @@ NtUserSetWindowWord(HWND hWnd, INT Index, WORD NewValue)
 
    if ((ULONG)Index > (Window->cbwndExtra - sizeof(WORD)))
    {
-      EngSetLastError(ERROR_INVALID_PARAMETER);
+      EngSetLastError(ERROR_INVALID_INDEX);
       RETURN( 0);
    }
 
@@ -4666,8 +4693,7 @@ IntShowOwnedPopups(PWND OwnerWnd, BOOL fShow )
    {
       if (!(pWnd = ValidateHwndNoErr( win_array[count] )))
          continue;
-      if (pWnd->spwndOwner != OwnerWnd)
-         continue;
+      ASSERT(pWnd->spwndOwner == OwnerWnd);
 
       if (fShow)
       {

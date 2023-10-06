@@ -49,6 +49,12 @@ inline LONG_PTR GetWindowLongPtr(HWND hWnd, int nIndex)
 #pragma push_macro("SubclassWindow")
 #undef SubclassWindow
 
+#ifdef __RATL__
+    #ifndef _Post_z_
+        #define _Post_z_
+    #endif
+#endif
+
 namespace ATL
 {
 
@@ -320,9 +326,37 @@ public:
         int wndCenterHeight = wndCenterRect.bottom - wndCenterRect.top;
         int wndWidth = wndRect.right - wndRect.left;
         int wndHeight = wndRect.bottom - wndRect.top;
+        int xPos = wndCenterRect.left + ((wndCenterWidth - wndWidth + 1) >> 1);
+        int yPos = wndCenterRect.top + ((wndCenterHeight - wndHeight + 1) >> 1);
+
+        if (!(::GetWindowLong(hWndCenter, GWL_STYLE) & WS_CHILD))
+        {
+            MONITORINFO mi;
+            mi.cbSize = sizeof(mi);
+            HMONITOR hMonitor = MonitorFromWindow(hWndCenter, MONITOR_DEFAULTTOPRIMARY);
+            GetMonitorInfo(hMonitor, &mi);
+
+            if (xPos + wndWidth > mi.rcWork.right)
+            {
+                xPos = mi.rcWork.right - wndWidth;
+            }
+            else if (xPos < mi.rcWork.left)
+            {
+                xPos = mi.rcWork.left;
+            }
+
+            if (yPos + wndHeight > mi.rcWork.bottom)
+            {
+                yPos = mi.rcWork.bottom - wndHeight;
+            }
+            if (yPos < mi.rcWork.top)
+            {
+                yPos = mi.rcWork.top;
+            }
+        }
         return ::MoveWindow(m_hWnd,
-                            wndCenterRect.left + ((wndCenterWidth - wndWidth + 1) >> 1),
-                            wndCenterRect.top + ((wndCenterHeight - wndHeight + 1) >> 1),
+                            xPos,
+                            yPos,
                             wndWidth, wndHeight, TRUE);
     }
 
@@ -1450,7 +1484,7 @@ public:
     using CWindowImplRoot<TBase>::m_hWnd;
     // - Hacks for gcc
 
-    HWND Create(HWND hWndParent, LPARAM dwInitParam = NULL)
+    HWND Create(HWND hWndParent, LPARAM dwInitParam = 0)
     {
         BOOL result;
         HWND hWnd;
@@ -1467,7 +1501,7 @@ public:
         return hWnd;
     }
 
-    INT_PTR DoModal(HWND hWndParent = ::GetActiveWindow(), LPARAM dwInitParam = NULL)
+    INT_PTR DoModal(HWND hWndParent = ::GetActiveWindow(), LPARAM dwInitParam = 0)
     {
         BOOL result;
         T* pImpl;

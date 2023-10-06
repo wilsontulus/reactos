@@ -7,7 +7,7 @@
  */
 
 /*
- * FIXME: Hotkey notifications are triggered by keyboard input (physical or programatically)
+ * FIXME: Hotkey notifications are triggered by keyboard input (physical or programmatically)
  * and since only desktops on WinSta0 can receive input in seems very wrong to allow
  * windows/threads on destops not belonging to WinSta0 to set hotkeys (receive notifications).
  *     -- Gunnar
@@ -52,7 +52,7 @@ StartDebugHotKeys(VOID)
     }
     UserRegisterHotKey(PWND_BOTTOM, IDHK_SHIFTF12, MOD_SHIFT, vk);
     UserRegisterHotKey(PWND_BOTTOM, IDHK_F12, 0, vk);
-    TRACE("Start up the debugger hotkeys!! If you see this you eneabled debugprints. Congrats!\n");
+    TRACE("Start up the debugger hotkeys!! If you see this you enabled debugprints. Congrats!\n");
 }
 
 /*
@@ -305,9 +305,9 @@ co_UserProcessHotKeys(WORD wVk, BOOL bIsDown)
 
 
 /*
- * DefWndGetHotKey
+ * DefWndGetHotKey --- GetHotKey message support
  *
- * GetHotKey message support
+ * Win: DWP_GetHotKey
  */
 UINT FASTCALL
 DefWndGetHotKey(PWND pWnd)
@@ -332,9 +332,9 @@ DefWndGetHotKey(PWND pWnd)
 }
 
 /*
- * DefWndSetHotKey
+ * DefWndSetHotKey --- SetHotKey message support
  *
- * SetHotKey message support
+ * Win: DWP_SetHotKey
  */
 INT FASTCALL
 DefWndSetHotKey(PWND pWnd, WPARAM wParam)

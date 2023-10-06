@@ -11,6 +11,8 @@ DBG_DEFAULT_CHANNEL(UserMenu);
 
 /* INTERNAL ******************************************************************/
 
+BOOL FASTCALL UITOOLS95_DrawFrameMenu(HDC dc, LPRECT r, UINT uFlags); /* draw.c */
+
 HFONT ghMenuFont = NULL;
 HFONT ghMenuFontBold = NULL;
 static SIZE MenuCharSize;
@@ -56,9 +58,7 @@ BOOL fInEndMenu = FALSE;
 #define MII_STATE_MASK (MFS_GRAYED|MFS_CHECKED|MFS_HILITE|MFS_DEFAULT)
 
 #define IS_SYSTEM_MENU(MenuInfo)  \
-	(!((MenuInfo)->fFlags & MNF_POPUP) && ((MenuInfo)->fFlags & MNF_SYSMENU))
-
-#define IS_BITMAP_ITEM(flags) (MF_BITMAP == MENU_ITEM_TYPE(flags))
+	(!!((MenuInfo)->fFlags & MNF_SYSMENU))
 
 #define IS_MAGIC_BITMAP(id) ((id) && ((INT_PTR)(id) < 12) && ((INT_PTR)(id) >= -1))
 #define IS_STRING_ITEM(flags) (MF_STRING == MENU_ITEM_TYPE(flags))
@@ -2186,14 +2186,14 @@ static void MENU_DrawScrollArrows(PMENU lppop, HDC hdc)
     rect.right = lppop->cxMenu;
     rect.bottom = arrow_bitmap_height;
     FillRect(hdc, &rect, IntGetSysColorBrush(COLOR_MENU));
-    DrawFrameControl(hdc, &rect, DFC_MENU, (lppop->iTop ? 0 : DFCS_INACTIVE)|DFCS_MENUARROWUP);
+    UITOOLS95_DrawFrameMenu(hdc, &rect, (lppop->iTop ? 0 : DFCS_INACTIVE) | DFCS_MENUARROWUP);
 
     rect.top = lppop->cyMenu - arrow_bitmap_height;
     rect.bottom = lppop->cyMenu;
     FillRect(hdc, &rect, IntGetSysColorBrush(COLOR_MENU));
     if (!(lppop->iTop < lppop->iMaxTop - (MENU_GetMaxPopupHeight(lppop) - 2 * arrow_bitmap_height)))
        Flags = DFCS_INACTIVE;
-    DrawFrameControl(hdc, &rect, DFC_MENU, Flags|DFCS_MENUARROWDOWN);
+    UITOOLS95_DrawFrameMenu(hdc, &rect, Flags | DFCS_MENUARROWDOWN);
 }
 
 /***********************************************************************
@@ -2308,7 +2308,7 @@ static void FASTCALL MENU_DrawMenuItem(PWND Wnd, PMENU Menu, PWND WndOwner, HDC 
             RECT rectTemp;
             RtlCopyMemory(&rectTemp, &rect, sizeof(RECT));
             rectTemp.left = rectTemp.right - UserGetSystemMetrics(SM_CXMENUCHECK);
-            DrawFrameControl(hdc, &rectTemp, DFC_MENU, DFCS_MENUARROW);
+            UITOOLS95_DrawFrameMenu(hdc, &rectTemp, DFCS_MENUARROW);
         }
         return;
     }
@@ -2452,9 +2452,9 @@ static void FASTCALL MENU_DrawMenuItem(PWND Wnd, PMENU Menu, PWND WndOwner, HDC 
                 RECT r;
                 r = rect;
                 r.right = r.left + check_bitmap_width;
-                DrawFrameControl( hdc, &r, DFC_MENU,
-                                 (lpitem->fType & MFT_RADIOCHECK) ?
-                                 DFCS_MENUBULLET : DFCS_MENUCHECK);
+                UITOOLS95_DrawFrameMenu(hdc, &r,
+                                        (lpitem->fType & MFT_RADIOCHECK) ?
+                                        DFCS_MENUBULLET : DFCS_MENUCHECK);
                 checked = TRUE;
             }
         }
@@ -2475,7 +2475,7 @@ static void FASTCALL MENU_DrawMenuItem(PWND Wnd, PMENU Menu, PWND WndOwner, HDC 
             RECT rectTemp;
             RtlCopyMemory(&rectTemp, &rect, sizeof(RECT));
             rectTemp.left = rectTemp.right - check_bitmap_width;
-            DrawFrameControl(hdc, &rectTemp, DFC_MENU, DFCS_MENUARROW);
+            UITOOLS95_DrawFrameMenu(hdc, &rectTemp, DFCS_MENUARROW);
         }
         rect.left += 4;
         if( !((Menu->fFlags & MNS_STYLE_MASK) & MNS_NOCHECK))
@@ -3292,7 +3292,7 @@ static void FASTCALL MENU_HideSubPopups(PWND pWndOwner, PMENU Menu,
           if (!(wFlags & TPM_NONOTIFY))
           {
              co_IntSendMessage( UserHMGetHandle(pWndOwner), WM_UNINITMENUPOPUP, (WPARAM)UserHMGetHandle(Item->spSubMenu),
-                                 MAKELPARAM(0, IS_SYSTEM_MENU(Item->spSubMenu)) );
+                                 MAKELPARAM(0, IS_SYSTEM_MENU(Item->spSubMenu) ? MF_SYSMENU : 0));
           }
           ////
           // Call WM_UNINITMENUPOPUP FIRST before destroy!!
@@ -4362,7 +4362,7 @@ static INT FASTCALL MENU_TrackMenu(PMENU pmenu, UINT wFlags, INT x, INT y,
               if (!(wFlags & TPM_NONOTIFY))
               {
                  co_IntSendMessage( UserHMGetHandle(mt.OwnerWnd), WM_UNINITMENUPOPUP, (WPARAM)UserHMGetHandle(mt.TopMenu),
-                                 MAKELPARAM(0, IS_SYSTEM_MENU(mt.TopMenu)) );
+                                 MAKELPARAM(0, IS_SYSTEM_MENU(mt.TopMenu) ? MF_SYSMENU : 0));
               }
             }
             MENU_SelectItem( mt.OwnerWnd, mt.TopMenu, NO_SELECTED_ITEM, FALSE, 0 );
@@ -4585,7 +4585,7 @@ BOOL WINAPI IntTrackPopupMenuEx( PMENU menu, UINT wFlags, int x, int y,
        /* Send WM_INITMENUPOPUP message only if TPM_NONOTIFY flag is not specified */
        if (!(wFlags & TPM_NONOTIFY))
        {
-          co_IntSendMessage( UserHMGetHandle(pWnd), WM_INITMENUPOPUP, (WPARAM) UserHMGetHandle(menu), 0);
+          co_IntSendMessage( UserHMGetHandle(pWnd), WM_INITMENUPOPUP, (WPARAM) UserHMGetHandle(menu), MAKELPARAM(0, IS_SYSTEM_MENU(menu)));
        }
 
        if (menu->fFlags & MNF_SYSMENU)
@@ -4615,7 +4615,7 @@ BOOL WINAPI IntTrackPopupMenuEx( PMENU menu, UINT wFlags, int x, int y,
           if (!(wFlags & TPM_NONOTIFY))
           {
              co_IntSendMessage( UserHMGetHandle(pWnd), WM_UNINITMENUPOPUP, (WPARAM)UserHMGetHandle(menu),
-                                            MAKELPARAM(0, IS_SYSTEM_MENU(menu)) );
+                                            MAKELPARAM(0, IS_SYSTEM_MENU(menu) ? MF_SYSMENU : 0));
           }
        }
     }

@@ -82,6 +82,11 @@ HRESULT CALLBACK RegFolderContextMenuCallback(IShellFolder *psf,
         if (!SH_ShowRecycleBinProperties(L'C'))
             hr = E_FAIL;
     }
+    else
+    {
+        /* Tell the caller to run the default action */
+        hr = S_FALSE;
+    }
 
     SHFree(pidlFolder);
     _ILFreeaPidl(apidl, cidl);
@@ -180,12 +185,15 @@ HRESULT CGuidItemExtractIcon_CreateInstance(LPCITEMIDLIST pidl, REFIID iid, LPVO
     }
     else
     {
+        // FIXME: Delete these hacks and make HCR_GetIconW and registry working
         if (IsEqualGUID(*riid, CLSID_MyComputer))
             initIcon->SetNormalIcon(swShell32Name, -IDI_SHELL_MY_COMPUTER);
         else if (IsEqualGUID(*riid, CLSID_MyDocuments))
             initIcon->SetNormalIcon(swShell32Name, -IDI_SHELL_MY_DOCUMENTS);
         else if (IsEqualGUID(*riid, CLSID_NetworkPlaces))
             initIcon->SetNormalIcon(swShell32Name, -IDI_SHELL_MY_NETWORK_PLACES);
+        else if (IsEqualGUID(*riid, CLSID_Internet))
+            initIcon->SetNormalIcon(swShell32Name, -IDI_SHELL_WEB_BROWSER);
         else
             initIcon->SetNormalIcon(swShell32Name, -IDI_SHELL_FOLDER);
     }
@@ -205,6 +213,14 @@ class CRegFolderEnum :
         BEGIN_COM_MAP(CRegFolderEnum)
         COM_INTERFACE_ENTRY_IID(IID_IEnumIDList, IEnumIDList)
         END_COM_MAP()
+};
+
+enum registry_columns
+{
+    REGISTRY_COL_NAME,
+    REGISTRY_COL_TYPE,
+    REGISTRY_COL_VALUE,
+    REGISTRY_COL_COUNT,
 };
 
 CRegFolderEnum::CRegFolderEnum()
@@ -497,7 +513,7 @@ HRESULT WINAPI CRegFolder::GetAttributesOf(UINT cidl, PCUITEMID_CHILD_ARRAY apid
         if (_ILIsSpecialFolder(*apidl))
             GetGuidItemAttributes(*apidl, rgfInOut);
         else
-            ERR("Got an unkown pidl here!\n");
+            ERR("Got an unknown pidl here!\n");
         apidl++;
         cidl--;
     }
@@ -718,7 +734,7 @@ HRESULT WINAPI CRegFolder::GetDefaultColumn(DWORD dwRes, ULONG *pSort, ULONG *pD
 
 HRESULT WINAPI CRegFolder::GetDefaultColumnState(UINT iColumn, DWORD *pcsFlags)
 {
-    if (iColumn >= 2)
+    if (iColumn >= REGISTRY_COL_COUNT)
         return E_INVALIDARG;
     *pcsFlags = SHCOLSTATE_TYPE_STR | SHCOLSTATE_ONBYDEFAULT;
     return S_OK;
@@ -744,11 +760,11 @@ HRESULT WINAPI CRegFolder::GetDetailsOf(PCUITEMID_CHILD pidl, UINT iColumn, SHEL
 
     switch(iColumn)
     {
-        case 0:        /* name */
+        case REGISTRY_COL_NAME:
             return GetDisplayNameOf(pidl, SHGDN_NORMAL | SHGDN_INFOLDER, &psd->str);
-        case 1:        /* type */
+        case REGISTRY_COL_TYPE:
             return SHSetStrRet(&psd->str, IDS_SYSTEMFOLDER);
-        case 4:        /* comments */
+        case REGISTRY_COL_VALUE:
             HKEY hKey;
             if (!HCR_RegOpenClassIDKey(*clsid, &hKey))
                 return SHSetStrRet(&psd->str, "");

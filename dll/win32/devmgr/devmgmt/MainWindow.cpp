@@ -41,10 +41,10 @@ static const MENU_HINT MainMenuHintTable[] =
     { IDM_ADD_HARDWARE, IDS_HINT_ADD },
 
     // View Menu
-    { IDM_DEVBYTYPE, IDS_HINT_DEV_BY_TYPE},
-    { IDM_DEVBYCONN, IDS_HINT_DEV_BY_CONN},
-    { IDM_RESBYTYPE, IDS_HINT_RES_BY_TYPE},
-    { IDM_RESBYCONN, IDS_HINT_RES_BY_TYPE},
+    { IDM_DEVBYTYPE, IDS_HINT_DEV_BY_TYPE },
+    { IDM_DEVBYCONN, IDS_HINT_DEV_BY_CONN },
+    { IDM_RESBYTYPE, IDS_HINT_RES_BY_TYPE },
+    { IDM_RESBYCONN, IDS_HINT_RES_BY_CONN },
     { IDM_SHOWHIDDEN, IDS_HINT_SHOW_HIDDEN },
 
     { IDM_ABOUT, IDS_HINT_ABOUT }
@@ -653,16 +653,13 @@ CDeviceManager::OnCommand(_In_ WPARAM wParam,
         {
             CAtlStringW szAppName;
             CAtlStringW szAppAuthors;
-            HICON hIcon;
 
             if (!szAppName.LoadStringW(g_hThisInstance, IDS_APPNAME))
                 szAppName = L"ReactOS Device Manager";
             if (!szAppAuthors.LoadStringW(g_hThisInstance, IDS_APP_AUTHORS))
                 szAppAuthors = L"";
-            hIcon = LoadIconW(g_hThisInstance, MAKEINTRESOURCEW(IDI_MAIN_ICON));
-            ShellAboutW(m_hMainWnd, szAppName, szAppAuthors, hIcon);
-            if (hIcon)
-                DestroyIcon(hIcon);
+            ShellAboutW(m_hMainWnd, szAppName, szAppAuthors,
+                        LoadIconW(g_hThisInstance, MAKEINTRESOURCEW(IDI_MAIN_ICON)));
 
             // Set focus back to the treeview
             m_DeviceView->SetFocus();

@@ -17,6 +17,7 @@ DBG_DEFAULT_CHANNEL(UserSysparams);
 SPIVALUES gspv;
 BOOL gbSpiInitialized = FALSE;
 BOOL g_PaintDesktopVersion = FALSE;
+BOOL g_bWindowSnapEnabled = TRUE;
 
 // HACK! We initialize SPI before we have a proper surface to get this from.
 #define dpi 96
@@ -99,8 +100,6 @@ static const WCHAR* KEY_SHOWSNDS = L"Control Panel\\Accessibility\\ShowSounds";
 static const WCHAR* KEY_KDBPREF = L"Control Panel\\Accessibility\\Keyboard Preference";
 static const WCHAR* KEY_SCRREAD = L"Control Panel\\Accessibility\\Blind Access";
 static const WCHAR* VAL_ON = L"On";
-
-
 
 /** Loading the settings ******************************************************/
 
@@ -213,6 +212,19 @@ SpiFixupValues(VOID)
     gspv.tmCaptionFont.tmHeight = 11;
     gspv.tmCaptionFont.tmExternalLeading = 2;
 
+}
+
+/* Is Window Snap enabled? */
+static BOOL IntIsWindowSnapEnabled(VOID)
+{
+    WCHAR szValue[2];
+    if (RegReadUserSetting(L"Control Panel\\Desktop", L"WindowArrangementActive",
+                           REG_SZ, szValue, sizeof(szValue)))
+    {
+        szValue[RTL_NUMBER_OF(szValue) - 1] = UNICODE_NULL; /* Avoid buffer overrun */
+        return (_wtoi(szValue) != 0);
+    }
+    return TRUE;
 }
 
 static
@@ -344,6 +356,8 @@ SpiUpdatePerUserSystemParameters(VOID)
        if (SPITESTPREF(UPM_LISTBOXSMOOTHSCROLLING)) gpsi->PUSIFlags |= PUSIF_LISTBOXSMOOTHSCROLLING;
     }
     gdwLanguageToggleKey = UserGetLanguageToggle();
+
+    g_bWindowSnapEnabled = IntIsWindowSnapEnabled();
 }
 
 BOOL
@@ -1390,10 +1404,10 @@ SpiGetSet(UINT uiAction, UINT uiParam, PVOID pvParam, FLONG fl)
             return SpiGetInt(pvParam, &gspv.bFontSmoothing, fl);
 
         case SPI_SETFONTSMOOTHING:
-            gspv.bFontSmoothing = (uiParam == 2);
+            gspv.bFontSmoothing = !!uiParam;
             if (fl & SPIF_UPDATEINIFILE)
             {
-                SpiStoreSz(KEY_DESKTOP, VAL_FONTSMOOTHING, (uiParam == 2) ? L"2" : L"0");
+                SpiStoreSzInt(KEY_DESKTOP, VAL_FONTSMOOTHING, gspv.bFontSmoothing ? 2 : 0);
             }
             return (UINT_PTR)KEY_DESKTOP;
 
@@ -1740,7 +1754,7 @@ SpiGetSet(UINT uiAction, UINT uiParam, PVOID pvParam, FLONG fl)
             return SpiGetInt(pvParam, &gspv.dwCaretWidth, fl);
 
         case SPI_SETCARETWIDTH:
-            return SpiSetInt(&gspv.dwCaretWidth, uiParam, KEY_MOUSE, L"", fl);
+            return SpiSetDWord(&gspv.dwCaretWidth, PtrToUlong(pvParam), KEY_DESKTOP, VAL_CARETWIDTH, fl);
 
         case SPI_GETMOUSECLICKLOCKTIME:
             return SpiGetInt(pvParam, &gspv.dwMouseClickLockTime, fl);

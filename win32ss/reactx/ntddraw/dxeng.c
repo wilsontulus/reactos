@@ -324,9 +324,9 @@ DxEngGetHdevData(HDEV hDev,
         DPRINT1("requested DXEGSHDEVDATA DxEGShDevData_eddg\n");
         retVal = (DWORD_PTR) PDev->pEDDgpl;
         break;
-      case DxEGShDevData_dd_nCount:
-        DPRINT1("requested DXEGSHDEVDATA DxEGShDevData_dd_nCount\n");
-        retVal = (DWORD_PTR) PDev->DxDd_nCount;
+      case DxEGShDevData_dd_locks:
+        DPRINT1("requested DXEGSHDEVDATA DxEGShDevData_dd_locks\n");
+        retVal = (DWORD_PTR) PDev->cDirectDrawDisableLocks;
         break;
       case DxEGShDevData_dd_flags:
         DPRINT1("requested DXEGSHDEVDATA DxEGShDevData_dd_flags\n");
@@ -413,9 +413,10 @@ DxEngSetHdevData(HDEV hDev,
 
     DPRINT1("ReactX Calling : DxEngSetHdevData DXEGSHDEVDATA : %ld\n", Type);
 
-    if ( Type == DxEGShDevData_dd_nCount )
+    if (Type == DxEGShDevData_dd_locks)
     {
-        ((PPDEVOBJ)hDev)->DxDd_nCount = Data;
+        DPRINT1("Assigning value %d\n", Data);
+        ((PPDEVOBJ)hDev)->cDirectDrawDisableLocks = Data;
         retVal = TRUE; // Set
     }
     return retVal;
@@ -587,7 +588,7 @@ BOOLEAN
 APIENTRY
 DxEngReferenceHdev(HDEV hDev)
 {
-    IntGdiReferencePdev((PPDEVOBJ) hDev);
+    PDEVOBJ_vReference((PPDEVOBJ)hDev);
     /* ALWAYS return true */
     return TRUE;
 }
@@ -689,7 +690,7 @@ BOOLEAN
 APIENTRY
 DxEngUnreferenceHdev(HDEV hDev)
 {
-    IntGdiUnreferencePdev((PPDEVOBJ) hDev, 0);
+    PDEVOBJ_vRelease((PPDEVOBJ)hDev);
     return TRUE; // Always true.
 }
 
@@ -762,28 +763,31 @@ DxEngSetDCState(HDC hDC, DWORD SetType, DWORD Set)
 /************************************************************************/
 /* DxEngSelectBitmap                                                    */
 /************************************************************************/
-DWORD APIENTRY DxEngSelectBitmap(DWORD x1, DWORD x2)
+HBITMAP APIENTRY DxEngSelectBitmap(HDC hdc, HBITMAP hbmp)
 {
-    UNIMPLEMENTED;
-    return FALSE;
+    DPRINT1("ReactX Calling : DxEngSelectBitmap \n");
+
+    return NtGdiSelectBitmap(hdc, hbmp);
 }
 
 /************************************************************************/
 /* DxEngSetBitmapOwner                                                  */
 /************************************************************************/
-DWORD APIENTRY DxEngSetBitmapOwner(DWORD x1, DWORD x2)
+BOOLEAN APIENTRY DxEngSetBitmapOwner(HBITMAP hbmp, ULONG ulOwner)
 {
-    UNIMPLEMENTED;
-    return FALSE;
+    DPRINT1("ReactX Calling : DxEngSetBitmapOwner \n");
+
+    return GreSetBitmapOwner(hbmp, ulOwner);
 }
 
 /************************************************************************/
 /* DxEngDeleteSurface                                                   */
 /************************************************************************/
-DWORD APIENTRY DxEngDeleteSurface(DWORD x1)
+BOOLEAN APIENTRY DxEngDeleteSurface(HSURF hsurf)
 {
-    UNIMPLEMENTED;
-    return FALSE;
+    DPRINT1("ReactX Calling : DxEngDeleteSurface \n");
+
+    return EngDeleteSurface(hsurf);
 }
 
 /************************************************************************/
@@ -798,10 +802,11 @@ DWORD APIENTRY DxEngGetSurfaceData(DWORD x1, DWORD x2)
 /************************************************************************/
 /* DxEngAltLockSurface                                                  */
 /************************************************************************/
-DWORD APIENTRY DxEngAltLockSurface(DWORD x1)
+SURFOBJ * APIENTRY DxEngAltLockSurface(HSURF hsurf)
 {
-    UNIMPLEMENTED;
-    return FALSE;
+    DPRINT1("ReactX Calling : DxEngAltLockSurface \n");
+
+    return EngLockSurface(hsurf);
 }
 
 /************************************************************************/
