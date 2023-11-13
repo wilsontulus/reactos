@@ -29,7 +29,7 @@ static HWND DoHtmlHelpW(HWND hwndCaller, LPCWSTR pszFile, UINT uCommand, DWORD_P
     {
         // The function loads the system library, not local
         GetSystemDirectoryW(szPath, _countof(szPath));
-        wcscat(szPath, L"\\hhctrl.ocx");
+        StringCchCatW(szPath, _countof(szPath), L"\\hhctrl.ocx");
         s_hHHCTRL_OCX = LoadLibraryW(szPath);
         if (s_hHHCTRL_OCX)
             s_pHtmlHelpW = (FN_HtmlHelpW)GetProcAddress(s_hHHCTRL_OCX, "HtmlHelpW");
@@ -39,37 +39,6 @@ static HWND DoHtmlHelpW(HWND hwndCaller, LPCWSTR pszFile, UINT uCommand, DWORD_P
         return NULL;
 
     return s_pHtmlHelpW(hwndCaller, pszFile, uCommand, dwData);
-}
-
-BOOL
-zoomTo(int newZoom, int mouseX, int mouseY)
-{
-    int x, y, w, h;
-    RECT clientRectScrollbox;
-    canvasWindow.GetClientRect(&clientRectScrollbox);
-
-    RECT clientRectImageArea;
-    ::SetRect(&clientRectImageArea, 0, 0, imageModel.GetWidth(), imageModel.GetHeight());
-    Zoomed(clientRectImageArea);
-
-    w = clientRectImageArea.right * newZoom / toolsModel.GetZoom();
-    h = clientRectImageArea.bottom * newZoom / toolsModel.GetZoom();
-    if (!w || !h)
-    {
-        return FALSE;
-    }
-    w = clientRectImageArea.right * clientRectScrollbox.right / w;
-    h = clientRectImageArea.bottom * clientRectScrollbox.bottom / h;
-    x = max(0, min(clientRectImageArea.right - w, mouseX - w / 2)) * newZoom / toolsModel.GetZoom();
-    y = max(0, min(clientRectImageArea.bottom - h, mouseY - h / 2)) * newZoom / toolsModel.GetZoom();
-
-    toolsModel.SetZoom(newZoom);
-
-    canvasWindow.Invalidate(TRUE);
-
-    canvasWindow.SendMessage(WM_HSCROLL, MAKEWPARAM(SB_THUMBPOSITION, x), 0);
-    canvasWindow.SendMessage(WM_VSCROLL, MAKEWPARAM(SB_THUMBPOSITION, y), 0);
-    return TRUE;
 }
 
 void CMainWindow::alignChildrenToMainWindow()
@@ -175,11 +144,11 @@ void CMainWindow::InsertSelectionFromHBITMAP(HBITMAP bitmap, HWND window)
 
         if (g_askBeforeEnlarging)
         {
-            TCHAR programname[20];
-            TCHAR shouldEnlargePromptText[100];
+            WCHAR programname[20];
+            WCHAR shouldEnlargePromptText[100];
 
-            LoadString(g_hinstExe, IDS_PROGRAMNAME, programname, _countof(programname));
-            LoadString(g_hinstExe, IDS_ENLARGEPROMPTTEXT, shouldEnlargePromptText, _countof(shouldEnlargePromptText));
+            ::LoadStringW(g_hinstExe, IDS_PROGRAMNAME, programname, _countof(programname));
+            ::LoadStringW(g_hinstExe, IDS_ENLARGEPROMPTTEXT, shouldEnlargePromptText, _countof(shouldEnlargePromptText));
 
             switch (MessageBox(shouldEnlargePromptText, programname, MB_YESNOCANCEL | MB_ICONQUESTION))
             {
@@ -216,20 +185,20 @@ LRESULT CMainWindow::OnMouseWheel(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL&
 {
     INT zDelta = (SHORT)HIWORD(wParam);
 
-    if (::GetAsyncKeyState(VK_CONTROL) < 0)
+    if (::GetKeyState(VK_CONTROL) < 0) // Ctrl+Wheel
     {
         if (zDelta < 0)
         {
             if (toolsModel.GetZoom() > MIN_ZOOM)
-                zoomTo(toolsModel.GetZoom() / 2, 0, 0);
+                canvasWindow.zoomTo(toolsModel.GetZoom() / 2);
         }
         else if (zDelta > 0)
         {
             if (toolsModel.GetZoom() < MAX_ZOOM)
-                zoomTo(toolsModel.GetZoom() * 2, 0, 0);
+                canvasWindow.zoomTo(toolsModel.GetZoom() * 2);
         }
     }
-    else
+    else // Wheel only
     {
         UINT nCount = 3;
         if (::GetAsyncKeyState(VK_SHIFT) < 0)
@@ -264,7 +233,7 @@ LRESULT CMainWindow::OnMouseWheel(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL&
 
 LRESULT CMainWindow::OnDropFiles(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 {
-    TCHAR droppedfile[MAX_PATH];
+    WCHAR droppedfile[MAX_PATH];
 
     HDROP hDrop = (HDROP)wParam;
     DragQueryFile(hDrop, 0, droppedfile, _countof(droppedfile));
@@ -278,14 +247,14 @@ LRESULT CMainWindow::OnDropFiles(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& 
 LRESULT CMainWindow::OnCreate(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
 {
     // Loading and setting the window menu from resource
-    m_hMenu = ::LoadMenu(g_hinstExe, MAKEINTRESOURCE(ID_MENU));
+    m_hMenu = ::LoadMenuW(g_hinstExe, MAKEINTRESOURCEW(ID_MENU));
     SetMenu(m_hMenu);
 
     // Create the status bar
     DWORD style = SBARS_SIZEGRIP | WS_CHILD | (registrySettings.ShowStatusBar ? WS_VISIBLE : 0);
-    g_hStatusBar = ::CreateWindowEx(0, STATUSCLASSNAME, NULL, style, 0, 0, 0, 0, m_hWnd,
-                                  NULL, g_hinstExe, NULL);
-    ::SendMessage(g_hStatusBar, SB_SETMINHEIGHT, 21, 0);
+    g_hStatusBar = ::CreateWindowExW(0, STATUSCLASSNAME, NULL, style, 0, 0, 0, 0, m_hWnd,
+                                     NULL, g_hinstExe, NULL);
+    ::SendMessageW(g_hStatusBar, SB_SETMINHEIGHT, 21, 0);
 
     // Create the tool box
     toolBoxContainer.DoCreate(m_hWnd);
@@ -307,8 +276,8 @@ LRESULT CMainWindow::OnCreate(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& bHa
     }
 
     // Set icon
-    SendMessage(WM_SETICON, ICON_BIG, (LPARAM) LoadIcon(g_hinstExe, MAKEINTRESOURCE(IDI_APPICON)));
-    SendMessage(WM_SETICON, ICON_SMALL, (LPARAM) LoadIcon(g_hinstExe, MAKEINTRESOURCE(IDI_APPICON)));
+    SendMessage(WM_SETICON, ICON_BIG, (LPARAM)::LoadIconW(g_hinstExe, MAKEINTRESOURCEW(IDI_APPICON)));
+    SendMessage(WM_SETICON, ICON_SMALL, (LPARAM)::LoadIconW(g_hinstExe, MAKEINTRESOURCEW(IDI_APPICON)));
 
     return 0;
 }
@@ -345,10 +314,10 @@ BOOL CMainWindow::ConfirmSave()
     if (imageModel.IsImageSaved())
         return TRUE;
 
-    CString strProgramName;
+    CStringW strProgramName;
     strProgramName.LoadString(IDS_PROGRAMNAME);
 
-    CString strSavePromptText;
+    CStringW strSavePromptText;
     strSavePromptText.Format(IDS_SAVEPROMPTTEXT, PathFindFileName(g_szFileName));
 
     switch (MessageBox(strSavePromptText, strProgramName, MB_YESNOCANCEL | MB_ICONQUESTION))
@@ -376,11 +345,11 @@ LRESULT CMainWindow::OnClose(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& bHan
 
 void CMainWindow::ProcessFileMenu(HMENU hPopupMenu)
 {
-    LPCTSTR dotext = PathFindExtensionW(g_szFileName);
+    LPCWSTR dotext = PathFindExtensionW(g_szFileName);
     BOOL isBMP = FALSE;
-    if (_tcsicmp(dotext, _T(".bmp")) == 0 ||
-        _tcsicmp(dotext, _T(".dib")) == 0 ||
-        _tcsicmp(dotext, _T(".rle")) == 0)
+    if (_wcsicmp(dotext, L".bmp") == 0 ||
+        _wcsicmp(dotext, L".dib") == 0 ||
+        _wcsicmp(dotext, L".rle") == 0)
     {
         isBMP = TRUE;
     }
@@ -402,7 +371,7 @@ void CMainWindow::ProcessFileMenu(HMENU hPopupMenu)
 
     for (INT iItem = 0; iItem < MAX_RECENT_FILES; ++iItem)
     {
-        CString& strFile = registrySettings.strFiles[iItem];
+        CStringW& strFile = registrySettings.strFiles[iItem];
         if (strFile.IsEmpty())
             break;
 
@@ -410,11 +379,11 @@ void CMainWindow::ProcessFileMenu(HMENU hPopupMenu)
 #define MAX_RECENT_PATHNAME_DISPLAY 30
         CPath pathFile(strFile);
         pathFile.CompactPathEx(MAX_RECENT_PATHNAME_DISPLAY);
-        assert(_tcslen((LPCTSTR)pathFile) <= MAX_RECENT_PATHNAME_DISPLAY);
+        assert(wcslen((LPCWSTR)pathFile) <= MAX_RECENT_PATHNAME_DISPLAY);
 
         // Add an accelerator (by '&') to the item number for quick access
-        TCHAR szText[4 + MAX_RECENT_PATHNAME_DISPLAY + 1];
-        wsprintf(szText, _T("&%u %s"), iItem + 1, (LPCTSTR)pathFile);
+        WCHAR szText[4 + MAX_RECENT_PATHNAME_DISPLAY + 1];
+        StringCchPrintfW(szText, _countof(szText), L"&%u %s", iItem + 1, (LPCWSTR)pathFile);
 
         INT iMenuItem = (cMenuItems - 2) + iItem;
         InsertMenu(hPopupMenu, iMenuItem, MF_BYPOSITION | MF_STRING, IDM_FILE1 + iItem, szText);
@@ -520,8 +489,8 @@ LRESULT CMainWindow::OnSize(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& bHand
     int test[] = { LOWORD(lParam) - 260, LOWORD(lParam) - 140, LOWORD(lParam) - 20 };
     if (::IsWindow(g_hStatusBar))
     {
-        ::SendMessage(g_hStatusBar, WM_SIZE, 0, 0);
-        ::SendMessage(g_hStatusBar, SB_SETPARTS, 3, (LPARAM)&test);
+        ::SendMessageW(g_hStatusBar, WM_SIZE, 0, 0);
+        ::SendMessageW(g_hStatusBar, SB_SETPARTS, 3, (LPARAM)&test);
     }
     alignChildrenToMainWindow();
     return 0;
@@ -547,7 +516,7 @@ LRESULT CMainWindow::OnKeyDown(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& bH
                 if (canvasWindow.m_hWnd == hwndCapture ||
                     fullscreenWindow.m_hWnd == hwndCapture)
                 {
-                    ::SendMessage(hwndCapture, nMsg, wParam, lParam);
+                    ::SendMessageW(hwndCapture, nMsg, wParam, lParam);
                 }
             }
             else if (selectionModel.m_bShow)
@@ -582,7 +551,7 @@ LRESULT CMainWindow::OnSysColorChange(UINT nMsg, WPARAM wParam, LPARAM lParam, B
 {
     /* Redirect message to common controls */
     HWND hToolbar = FindWindowEx(toolBoxContainer.m_hWnd, NULL, TOOLBARCLASSNAME, NULL);
-    SendMessage(hToolbar, WM_SYSCOLORCHANGE, 0, 0);
+    ::SendMessageW(hToolbar, WM_SYSCOLORCHANGE, 0, 0);
     return 0;
 }
 
@@ -600,12 +569,11 @@ LRESULT CMainWindow::OnCommand(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& bH
     {
         case IDM_HELPINFO:
         {
-            TCHAR infotitle[100];
-            TCHAR infotext[200];
-            LoadString(g_hinstExe, IDS_INFOTITLE, infotitle, _countof(infotitle));
-            LoadString(g_hinstExe, IDS_INFOTEXT, infotext, _countof(infotext));
-            ShellAbout(m_hWnd, infotitle, infotext,
-                       LoadIcon(g_hinstExe, MAKEINTRESOURCE(IDI_APPICON)));
+            WCHAR infotitle[100], infotext[200];
+            ::LoadStringW(g_hinstExe, IDS_INFOTITLE, infotitle, _countof(infotitle));
+            ::LoadStringW(g_hinstExe, IDS_INFOTEXT, infotext, _countof(infotext));
+            ::ShellAboutW(m_hWnd, infotitle, infotext,
+                          LoadIconW(g_hinstExe, MAKEINTRESOURCEW(IDI_APPICON)));
             break;
         }
         case IDM_HELPHELPTOPICS:
@@ -622,7 +590,7 @@ LRESULT CMainWindow::OnCommand(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& bH
             break;
         case IDM_FILEOPEN:
             {
-                TCHAR szFileName[MAX_LONG_PATH] = _T("");
+                WCHAR szFileName[MAX_LONG_PATH] = L"";
                 if (ConfirmSave() && GetOpenFileName(szFileName, _countof(szFileName)))
                 {
                     DoLoadImageFile(m_hWnd, szFileName, TRUE);
@@ -659,7 +627,7 @@ LRESULT CMainWindow::OnCommand(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& bH
             pd.nMaxPage = 0xffff;
             if (PrintDlg(&pd) == TRUE)
             {
-                BitBlt(pd.hDC, 0, 0, imageModel.GetWidth(), imageModel.GetHeight(), imageModel.GetDC(), 0, 0, SRCCOPY);
+                ::BitBlt(pd.hDC, 0, 0, imageModel.GetWidth(), imageModel.GetHeight(), imageModel.GetDC(), 0, 0, SRCCOPY);
                 DeleteDC(pd.hDC);
             }
             if (pd.hDevMode)
@@ -751,14 +719,13 @@ LRESULT CMainWindow::OnCommand(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& bH
             selectionModel.TakeOff();
 
             {
-                HBITMAP hbmLocked = selectionModel.LockBitmap();
-                if (hbmLocked)
-                {
-                    HGLOBAL hGlobal = BitmapToClipboardDIB(hbmLocked);
-                    if (hGlobal)
-                        ::SetClipboardData(CF_DIB, hGlobal);
-                    selectionModel.UnlockBitmap(hbmLocked);
-                }
+                HBITMAP hbmCopy = selectionModel.GetSelectionContents();
+                HGLOBAL hGlobal = BitmapToClipboardDIB(hbmCopy);
+                if (hGlobal)
+                    ::SetClipboardData(CF_DIB, hGlobal);
+                else
+                    ShowOutOfMemory();
+                ::DeleteObject(hbmCopy);
             }
 
             CloseClipboard();
@@ -827,7 +794,7 @@ LRESULT CMainWindow::OnCommand(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& bH
 
             // Failed to paste
             {
-                CString strText, strTitle;
+                CStringW strText, strTitle;
                 strText.LoadString(IDS_CANTPASTE);
                 strTitle.LoadString(IDS_PROGRAMNAME);
                 MessageBox(strText, strTitle, MB_ICONINFORMATION);
@@ -865,19 +832,25 @@ LRESULT CMainWindow::OnCommand(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& bH
                 break;
             }
             HWND hToolbar = FindWindowEx(toolBoxContainer.m_hWnd, NULL, TOOLBARCLASSNAME, NULL);
-            SendMessage(hToolbar, TB_CHECKBUTTON, ID_RECTSEL, MAKELPARAM(TRUE, 0));
+            ::SendMessageW(hToolbar, TB_CHECKBUTTON, ID_RECTSEL, MAKELPARAM(TRUE, 0));
             toolsModel.selectAll();
             canvasWindow.Invalidate(TRUE);
             break;
         }
         case IDM_EDITCOPYTO:
         {
-            WCHAR szFileName[MAX_LONG_PATH] = L"*.png";
+            WCHAR szFileName[MAX_LONG_PATH];
+            ::LoadStringW(g_hinstExe, IDS_DEFAULTFILENAME, szFileName, _countof(szFileName));
             if (GetSaveFileName(szFileName, _countof(szFileName)))
             {
-                HBITMAP hbmLocked = selectionModel.LockBitmap();
-                SaveDIBToFile(hbmLocked, szFileName, FALSE);
-                selectionModel.UnlockBitmap(hbmLocked);
+                HBITMAP hbmSelection = selectionModel.GetSelectionContents();
+                if (!hbmSelection)
+                {
+                    ShowOutOfMemory();
+                    break;
+                }
+                SaveDIBToFile(hbmSelection, szFileName, FALSE);
+                DeleteObject(hbmSelection);
             }
             break;
         }
@@ -921,6 +894,7 @@ LRESULT CMainWindow::OnCommand(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& bH
         case IDM_IMAGEROTATEMIRROR:
             {
                 CWaitCursor waitCursor;
+                canvasWindow.updateScrollPos();
                 switch (mirrorRotateDialog.DoModal(mainWindow.m_hWnd))
                 {
                     case 1: /* flip horizontally */
@@ -973,8 +947,8 @@ LRESULT CMainWindow::OnCommand(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& bH
                 CWaitCursor waitCursor;
                 if (attributesDialog.m_bBlackAndWhite && !imageModel.IsBlackAndWhite())
                 {
-                    CString strText(MAKEINTRESOURCE(IDS_LOSECOLOR));
-                    CString strTitle(MAKEINTRESOURCE(IDS_PROGRAMNAME));
+                    CStringW strText(MAKEINTRESOURCEW(IDS_LOSECOLOR));
+                    CStringW strTitle(MAKEINTRESOURCEW(IDS_PROGRAMNAME));
                     INT id = MessageBox(strText, strTitle, MB_ICONINFORMATION | MB_YESNOCANCEL);
                     if (id != IDYES)
                         break;
@@ -1012,9 +986,12 @@ LRESULT CMainWindow::OnCommand(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& bH
             toolsModel.SetBackgroundTransparent(!toolsModel.IsBackgroundTransparent());
             break;
         case IDM_IMAGECROP:
-            imageModel.PushImageForUndo(selectionModel.CopyBitmap());
+        {
+            HBITMAP hbmCopy = selectionModel.GetSelectionContents();
+            imageModel.PushImageForUndo(hbmCopy);
             selectionModel.HideSelection();
             break;
+        }
         case IDM_VIEWTOOLBOX:
             registrySettings.ShowToolBox = !toolBoxContainer.IsWindowVisible();
             toolBoxContainer.ShowWindow(registrySettings.ShowToolBox ? SW_SHOWNOACTIVATE : SW_HIDE);
@@ -1053,25 +1030,25 @@ LRESULT CMainWindow::OnCommand(UINT nMsg, WPARAM wParam, LPARAM lParam, BOOL& bH
             break;
 
         case IDM_VIEWZOOM125:
-            zoomTo(125, 0, 0);
+            canvasWindow.zoomTo(125);
             break;
         case IDM_VIEWZOOM25:
-            zoomTo(250, 0, 0);
+            canvasWindow.zoomTo(250);
             break;
         case IDM_VIEWZOOM50:
-            zoomTo(500, 0, 0);
+            canvasWindow.zoomTo(500);
             break;
         case IDM_VIEWZOOM100:
-            zoomTo(1000, 0, 0);
+            canvasWindow.zoomTo(1000);
             break;
         case IDM_VIEWZOOM200:
-            zoomTo(2000, 0, 0);
+            canvasWindow.zoomTo(2000);
             break;
         case IDM_VIEWZOOM400:
-            zoomTo(4000, 0, 0);
+            canvasWindow.zoomTo(4000);
             break;
         case IDM_VIEWZOOM800:
-            zoomTo(8000, 0, 0);
+            canvasWindow.zoomTo(8000);
             break;
 
         case IDM_VIEWFULLSCREEN:

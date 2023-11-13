@@ -25,11 +25,8 @@
 #include <math.h>
 #include <shellapi.h>
 #include <htmlhelp.h>
+#include <strsafe.h>
 #include "atlimagedx.h"
-#ifdef _DEBUG
-    #define _CRTDBG_MAP_ALLOC
-    #include <crtdbg.h>
-#endif
 
 #include <debug.h>
 
